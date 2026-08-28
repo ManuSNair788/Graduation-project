@@ -16,8 +16,14 @@ from schema import RelevanceBatch
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("stage1")
 
-BATCH_SIZE = 30  # compound-mini is request-bound (30 RPM) not token-bound (70K TPM) — larger
-# batches cost nothing in TPM terms and cut call count (author correction, Phase 3).
+MODEL_ENV_VAR = "GROQ_MODEL_FILTER"  # openai/gpt-oss-20b — swapped in while compound-mini's
+# daily quota is exhausted (resets midnight UTC / 5:30 AM IST). GROQ_MODEL_CHEAP stays defined
+# in .env/.env.example and llm.call_cheap unremoved, so this is a one-line revert later, not a
+# code change (author instruction).
+
+BATCH_SIZE = 10  # gpt-oss-20b is 8K TPM (not compound-mini's 70K) — a batch of 30 would exceed
+# that per call. At 10, the existing TPM throttle becomes the binding constraint and paces the
+# run; RPM (30) is no longer the tighter limit for this model (author correction, Phase 3).
 RETRY_BATCH_SIZE = 5
 CORPUS_CAP = 600
 SAMPLE_SEED = 42
@@ -117,7 +123,7 @@ def _build_prompt(batch: list[dict]) -> str:
 def _classify_batch(batch: list[dict]) -> tuple[list[bool] | None, str | None]:
     """Returns (relevance_flags, None) on success, or (None, failure_reason)."""
     prompt = _build_prompt(batch)
-    result = llm.call_cheap(prompt, expected_output_tokens=len(batch) * 6)
+    result = llm.call_filter(prompt, expected_output_tokens=len(batch) * 6)
     if not result.ok:
         return None, "rate_limited" if result.rate_limited else "llm_error"
     try:
@@ -171,11 +177,11 @@ def run(
 
     presampled, presample_report = presample_corpus(raw_snippets, seed=seed)
 
-    quota_estimate = estimate_quota(len(presampled), BATCH_SIZE, "GROQ_MODEL_CHEAP")
+    quota_estimate = estimate_quota(len(presampled), BATCH_SIZE, MODEL_ENV_VAR)
     if quota_estimate["over_threshold"]:
         msg = (
             f"ABORTING before any Stage 1 calls: estimated {quota_estimate['expected_calls']} "
-            f"requests is {quota_estimate['fraction']:.1%} of GROQ_MODEL_CHEAP's "
+            f"requests is {quota_estimate['fraction']:.1%} of {MODEL_ENV_VAR}'s "
             f"{quota_estimate['daily_limit']}/day cap, over the {QUOTA_ABORT_THRESHOLD:.0%} threshold."
         )
         log.error(msg)

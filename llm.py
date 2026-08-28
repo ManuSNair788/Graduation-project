@@ -10,14 +10,16 @@ TPM_LIMITS = {
     "GROQ_MODEL_CHEAP": 70_000,  # groq/compound-mini
     "GROQ_MODEL_STRONG": 8_000,  # qwen/qwen3.8-27b
     "GROQ_MODEL_SYNTHESIS": 8_000,  # openai/gpt-oss-120b
+    "GROQ_MODEL_FILTER": 8_000,  # openai/gpt-oss-20b
 }
 
 # groq/compound-mini is RPM-bound rather than TPM-bound (30 RPM against 70K TPM), so the token
-# window alone won't keep it under its limit. All three models share the same 30 RPM cap.
+# window alone won't keep it under its limit. All models share the same 30 RPM cap.
 RPM_LIMITS = {
     "GROQ_MODEL_CHEAP": 30,
     "GROQ_MODEL_STRONG": 30,
     "GROQ_MODEL_SYNTHESIS": 30,
+    "GROQ_MODEL_FILTER": 30,
 }
 
 # Confirmed daily request caps (ARCHITECTURE.md header table). Pipeline stages use this to
@@ -27,6 +29,7 @@ DAILY_REQUEST_LIMITS = {
     "GROQ_MODEL_CHEAP": 250,
     "GROQ_MODEL_STRONG": 1_000,
     "GROQ_MODEL_SYNTHESIS": 1_000,
+    "GROQ_MODEL_FILTER": 1_000,
 }
 
 # ARCHITECTURE.md §4.4 point 1 — four retries beyond the original attempt.
@@ -197,6 +200,16 @@ def call_cheap(
     prompt: str, *, timeout_s: int = 15, expected_output_tokens: int = DEFAULT_EXPECTED_OUTPUT_TOKENS
 ) -> LLMResult:
     return _call("GROQ_MODEL_CHEAP", prompt, timeout_s, expected_output_tokens)
+
+
+def call_filter(
+    prompt: str, *, timeout_s: int = 15, expected_output_tokens: int = DEFAULT_EXPECTED_OUTPUT_TOKENS
+) -> LLMResult:
+    """Stage 1's current model (openai/gpt-oss-20b via GROQ_MODEL_FILTER) — swapped in for
+    call_cheap/GROQ_MODEL_CHEAP (groq/compound-mini) while compound-mini's daily quota is
+    exhausted. GROQ_MODEL_CHEAP stays defined and call_cheap unremoved so Stage 1 can be
+    pointed back at it later with no code change beyond the one call site in stage1_filter.py."""
+    return _call("GROQ_MODEL_FILTER", prompt, timeout_s, expected_output_tokens)
 
 
 def call_strong(
