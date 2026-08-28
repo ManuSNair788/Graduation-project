@@ -33,13 +33,12 @@ SAMPLE_SEED = 42
 MIN_SURVIVORS = 200
 MAX_SOURCE_RATIO = 3.0
 
-# Addition (author, Phase 3): 3,709 snippets at the old batch size of 20 was 186 calls against
-# compound-mini's 250/day cap — no margin for retries, and most of the corpus gets discarded by
-# the 600-cap below regardless. Presample down to ~1,300 first, weighted by expected signal
-# density, before Stage 1 makes a single call. All YouTube comments are kept (highest density
-# of purchase-hesitation language); Play Store is downsampled.
-PRESAMPLE_AJIO_COUNT = 400
-PRESAMPLE_MYNTRA_COUNT = 200
+# Correction (author, Phase 3, second pass): the 400/200 Play Store presample caps below were a
+# quota-conservation measure that turned out to be the wrong lever. The real Stage 1 run showed
+# 73 survivors across 8-9 barrier categories — too few for credible frequency percentages. The
+# constraint is corpus volume relative to barrier-category count, not per-call cost (Stage 1's
+# actual cost is comfortably inside quota either way — see estimate_quota below). No more
+# downsampling: the full Play Store pool goes in, same as YouTube already does.
 
 # Addition (author, Phase 3): abort before making any calls if the estimated request volume for
 # this run can't possibly finish within a safe fraction of the daily cap. A run that cannot
@@ -59,30 +58,27 @@ def _strip_fences(text: str) -> str:
 
 
 def presample_corpus(snippets: list[dict], seed: int = SAMPLE_SEED) -> tuple[list[dict], dict]:
-    """Weighted presample, run before any LLM call. Returns (sampled_snippets, report)."""
-    rng = random.Random(seed)
-
+    """No downsampling (author correction, Phase 3, second pass) — the full pool goes into
+    Stage 1 for every source. Kept as a function (rather than inlined into run()) because the
+    by-source composition report is still useful, and `seed` is accepted for interface
+    stability with the corpus-cap step in run(), which still samples after Stage 1."""
     youtube = [s for s in snippets if s["source"] == "youtube"]
     ajio = [s for s in snippets if s["source"] == "play_store" and s.get("app") == "ajio"]
     myntra = [s for s in snippets if s["source"] == "play_store" and s.get("app") == "myntra"]
     categorized_ids = {s["id"] for s in youtube + ajio + myntra}
     other = [s for s in snippets if s["id"] not in categorized_ids]
 
-    sampled_youtube = youtube  # keep all
-    sampled_ajio = rng.sample(ajio, min(PRESAMPLE_AJIO_COUNT, len(ajio)))
-    sampled_myntra = rng.sample(myntra, min(PRESAMPLE_MYNTRA_COUNT, len(myntra)))
-
-    presampled = sampled_youtube + sampled_ajio + sampled_myntra + other
+    presampled = youtube + ajio + myntra + other  # full pool, every source
 
     report = {
-        "youtube": {"pre": len(youtube), "post": len(sampled_youtube)},
-        "play_store_ajio": {"pre": len(ajio), "post": len(sampled_ajio)},
-        "play_store_myntra": {"pre": len(myntra), "post": len(sampled_myntra)},
+        "youtube": {"pre": len(youtube), "post": len(youtube)},
+        "play_store_ajio": {"pre": len(ajio), "post": len(ajio)},
+        "play_store_myntra": {"pre": len(myntra), "post": len(myntra)},
         "other": {"pre": len(other), "post": len(other)},
         "total": {"pre": len(snippets), "post": len(presampled)},
     }
 
-    log.info("=== Presample (before any Stage 1 call) ===")
+    log.info("=== Corpus composition (no downsampling — full pool) ===")
     for label, counts in report.items():
         log.info(f"  {label}: {counts['pre']} -> {counts['post']}")
 
