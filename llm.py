@@ -62,7 +62,11 @@ _request_windows: dict[str, list[float]] = {}
 def _client() -> Groq:
     global _client_instance
     if _client_instance is None:
-        _client_instance = Groq(api_key=os.environ["GROQ_API_KEY"])
+        # max_retries=0: the SDK's own default retry-on-429 behavior is invisible to our RPM/TPM
+        # windows (it fires extra HTTP requests without going through _call's throttle checks),
+        # which silently blew past the real rate limit and caused a 429 flood. All retry logic
+        # must go through our own backoff loop below, or the accounting is wrong.
+        _client_instance = Groq(api_key=os.environ["GROQ_API_KEY"], max_retries=0)
     return _client_instance
 
 
