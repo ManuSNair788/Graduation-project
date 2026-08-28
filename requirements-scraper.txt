@@ -1,6 +1,5 @@
 # Local-only scraper dependencies. Never installed on the deployed Space (ARCHITECTURE.md §2.9).
 google-play-scraper==1.2.7
-praw==7.8.2
 requests==2.34.2
 urllib3==2.7.0
 
@@ -10,3 +9,6 @@ urllib3==2.7.0
 # skipped by default. Install it only if you want to re-attempt that source, separately,
 # with its dependency check bypassed:
 #   pip install --no-deps app-store-scraper==0.3.5
+
+# praw is not installed — Reddit is a permanently dead source (see scraper.py's Reddit
+# docstring: both the public .json endpoints and PRAW OAuth registration are dead ends).

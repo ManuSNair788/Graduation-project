@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -14,9 +13,6 @@ log = logging.getLogger("scraper")
 
 OUTPUT_PATH = Path("data/raw_snippets.json")
 
-REDDIT_SUBREDDITS = ["IndianFashionAddicts", "india", "TwoXIndia", "OnexIndian"]
-REDDIT_SEARCH_TERMS = ["wishlist", "AJIO", "Myntra", "online shopping size", "fashion returns India"]
-
 YOUTUBE_SEARCH_QUERIES = [
     "AJIO haul",
     "Myntra haul",
@@ -27,6 +23,8 @@ YOUTUBE_SEARCH_QUERIES = [
     "online shopping fails India",
     "what I ordered vs what I got",
     "AJIO honest review",
+    "Myntra haul review",
+    "AJIO vs Myntra quality",
 ]
 YOUTUBE_MAX_VIDEOS = 15
 YOUTUBE_COMMENTS_PER_VIDEO = 100  # single page per video, API max
@@ -125,89 +123,21 @@ def scrape_app_store(app_id: int, app_name: str, label: str, target_count: int) 
 
 
 # ---------------------------------------------------------------------------
-# Reddit — PRAW, OAuth app-only (read-only) flow
+# Reddit — permanently dead, not attempted.
 #
-# The public .json search endpoints started rejecting all unauthenticated requests
-# (403/404 regardless of User-Agent — see git history for the earlier attempt). Switched to
-# a registered "script" app's client id/secret in read-only mode, which needs no user login,
-# just app credentials from reddit.com/prefs/apps. If REDDIT_CLIENT_ID/REDDIT_CLIENT_SECRET
-# aren't set, this is logged and skipped per CONTEXT.md §9.7 rather than blocking the run.
+# Two routes tried and abandoned: (1) the public .json search endpoints, which now reject
+# all unauthenticated requests (403/404 regardless of User-Agent); (2) PRAW OAuth app-only
+# mode, which needs a "script" app registered at reddit.com/prefs/apps — that registration's
+# captcha could not be completed, so no client id/secret exist and none will be pursued.
+# Logged and skipped per CONTEXT.md §9.7, same treatment as App Store above. Left in as a
+# stub (rather than deleted outright) so the source list in CONTEXT.md/ARCHITECTURE.md and
+# the corpus's source coverage stay honestly documented in one place.
 # ---------------------------------------------------------------------------
 
 
-def scrape_reddit(target_count: int) -> list[dict]:
-    snippets: list[dict] = []
-    client_id = os.environ.get("REDDIT_CLIENT_ID")
-    client_secret = os.environ.get("REDDIT_CLIENT_SECRET")
-    user_agent = os.environ.get("REDDIT_USER_AGENT", "ajio-wishlist-research/1.0")
-
-    if not client_id or not client_secret:
-        log.error(
-            "Reddit: REDDIT_CLIENT_ID/REDDIT_CLIENT_SECRET not set, skipping "
-            "(register a script app at reddit.com/prefs/apps — see .env.example)"
-        )
-        return snippets
-
-    try:
-        import praw
-
-        reddit = praw.Reddit(client_id=client_id, client_secret=client_secret, user_agent=user_agent)
-        reddit.read_only = True
-    except Exception as exc:
-        log.error(f"Reddit: PRAW auth setup FAILED, skipping: {exc}")
-        return snippets
-
-    per_combo = max(target_count // (len(REDDIT_SUBREDDITS) * len(REDDIT_SEARCH_TERMS)), 3)
-
-    for sub_name in REDDIT_SUBREDDITS:
-        if len(snippets) >= target_count:
-            break
-        try:
-            subreddit = reddit.subreddit(sub_name)
-        except Exception as exc:
-            log.error(f"Reddit r/{sub_name} FAILED to open, skipping: {exc}")
-            continue
-
-        for term in REDDIT_SEARCH_TERMS:
-            if len(snippets) >= target_count:
-                break
-            try:
-                for submission in subreddit.search(term, limit=per_combo, sort="relevance"):
-                    text = (submission.selftext or submission.title or "").strip()
-                    if text:
-                        snippets.append(
-                            {
-                                "id": _make_id("reddit"),
-                                "source": "reddit",
-                                "date": datetime.utcfromtimestamp(submission.created_utc).strftime("%Y-%m-%d"),
-                                "rating": None,
-                                "text": text,
-                            }
-                        )
-
-                    submission.comments.replace_more(limit=0)
-                    for comment in submission.comments[:5]:
-                        c_text = (comment.body or "").strip()
-                        if c_text and c_text not in ("[deleted]", "[removed]"):
-                            snippets.append(
-                                {
-                                    "id": _make_id("reddit"),
-                                    "source": "reddit",
-                                    "date": datetime.utcfromtimestamp(comment.created_utc).strftime("%Y-%m-%d"),
-                                    "rating": None,
-                                    "text": c_text,
-                                }
-                            )
-                    if len(snippets) >= target_count:
-                        break
-            except Exception as exc:
-                log.error(f"Reddit r/{sub_name} search '{term}' FAILED, skipping: {exc}")
-
-    log.info(
-        f"Reddit: collected {len(snippets)} snippets across {len(REDDIT_SUBREDDITS)} subreddits "
-        f"× {len(REDDIT_SEARCH_TERMS)} search terms"
-    )
-    return snippets
+def scrape_reddit() -> list[dict]:
+    log.warning("Reddit: permanently dead source, not attempted (see module docstring above)")
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -295,7 +225,7 @@ def main() -> None:
     all_snippets += scrape_google_play("com.ril.ajio", "AJIO", target_count=2000)
     all_snippets += scrape_google_play("com.myntra.android", "Myntra", target_count=1000)
     all_snippets += scrape_app_store(1113425372, "ajio", "AJIO", target_count=500)
-    all_snippets += scrape_reddit(target_count=300)
+    all_snippets += scrape_reddit()
     all_snippets += scrape_youtube()
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
