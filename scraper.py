@@ -73,6 +73,7 @@ def scrape_google_play(app_id: str, label: str, target_count: int) -> list[dict]
                 {
                     "id": _make_id("play_store"),
                     "source": "play_store",
+                    "app": label.lower(),
                     "date": at.strftime("%Y-%m-%d") if isinstance(at, datetime) else None,
                     "rating": r.get("score"),
                     "text": text,
@@ -111,6 +112,7 @@ def scrape_app_store(app_id: int, app_name: str, label: str, target_count: int) 
                 {
                     "id": _make_id("app_store"),
                     "source": "app_store",
+                    "app": label.lower(),
                     "date": date.strftime("%Y-%m-%d") if isinstance(date, datetime) else None,
                     "rating": r.get("rating"),
                     "text": text,
@@ -207,6 +209,7 @@ def scrape_youtube() -> list[dict]:
                     {
                         "id": _make_id("youtube"),
                         "source": "youtube",
+                        "app": None,
                         "date": published[:10] if published else None,
                         "rating": None,
                         "text": text,
