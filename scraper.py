@@ -25,9 +25,16 @@ YOUTUBE_SEARCH_QUERIES = [
     "AJIO honest review",
     "Myntra haul review",
     "AJIO vs Myntra quality",
+    "Myntra try on haul",
+    "AJIO kurti review",
+    "online shopping size problem India",
+    "Myntra vs AJIO which is better",
+    "fashion haul India honest",
+    "AJIO delivery quality review",
+    "size chart confusion online shopping",
 ]
-YOUTUBE_MAX_VIDEOS = 15
-YOUTUBE_COMMENTS_PER_VIDEO = 100  # single page per video, API max
+YOUTUBE_MAX_VIDEOS = 40
+YOUTUBE_COMMENTS_PER_VIDEO = 150  # paginated — API maxResults caps at 100/request
 
 _next_id = 0
 
@@ -184,37 +191,46 @@ def scrape_youtube() -> list[dict]:
     log.info(f"YouTube: {len(video_queue)} unique videos queued across {len(YOUTUBE_SEARCH_QUERIES)} search queries")
 
     for video_id in video_queue:
+        collected_for_video = 0
+        page_token = None
         try:
-            c_r = requests.get(
-                "https://www.googleapis.com/youtube/v3/commentThreads",
-                params={
+            while collected_for_video < YOUTUBE_COMMENTS_PER_VIDEO:
+                params = {
                     "part": "snippet",
                     "videoId": video_id,
-                    "maxResults": YOUTUBE_COMMENTS_PER_VIDEO,
+                    "maxResults": min(100, YOUTUBE_COMMENTS_PER_VIDEO - collected_for_video),
                     "order": "relevance",
                     "key": api_key,
-                },
-                timeout=15,
-            )
-            if c_r.status_code == 403:
-                continue  # comments disabled on this video — not a scraper failure
-            c_r.raise_for_status()
-            for item in c_r.json().get("items", []):
-                top = item["snippet"]["topLevelComment"]["snippet"]
-                text = (top.get("textOriginal") or "").strip()
-                if not text:
-                    continue
-                published = top.get("publishedAt")
-                snippets.append(
-                    {
-                        "id": _make_id("youtube"),
-                        "source": "youtube",
-                        "app": None,
-                        "date": published[:10] if published else None,
-                        "rating": None,
-                        "text": text,
-                    }
+                }
+                if page_token:
+                    params["pageToken"] = page_token
+                c_r = requests.get(
+                    "https://www.googleapis.com/youtube/v3/commentThreads", params=params, timeout=15
                 )
+                if c_r.status_code == 403:
+                    break  # comments disabled on this video — not a scraper failure
+                c_r.raise_for_status()
+                data = c_r.json()
+                for item in data.get("items", []):
+                    top = item["snippet"]["topLevelComment"]["snippet"]
+                    text = (top.get("textOriginal") or "").strip()
+                    if not text:
+                        continue
+                    published = top.get("publishedAt")
+                    snippets.append(
+                        {
+                            "id": _make_id("youtube"),
+                            "source": "youtube",
+                            "app": None,
+                            "date": published[:10] if published else None,
+                            "rating": None,
+                            "text": text,
+                        }
+                    )
+                    collected_for_video += 1
+                page_token = data.get("nextPageToken")
+                if not page_token:
+                    break
         except Exception as exc:
             log.error(f"YouTube comments for video {video_id} FAILED, skipping: {exc}")
 
