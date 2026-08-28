@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import sys
 from pathlib import Path
 
@@ -14,6 +15,27 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger("stage2")
 
 EXPECTED_OUTPUT_TOKENS = 300
+
+# Addition (author, Phase 3): abort before making any calls if the estimated request volume
+# (one primary call per snippet) can't possibly finish within a safe fraction of qwen's daily
+# cap. Escalations aren't counted — they're the exception path, not predictable up front.
+QUOTA_ABORT_THRESHOLD = 0.6
+
+
+def estimate_quota(num_snippets: int) -> dict:
+    daily_limit = llm.DAILY_REQUEST_LIMITS["GROQ_MODEL_STRONG"]
+    fraction = num_snippets / daily_limit if daily_limit else 1.0
+    estimate = {
+        "expected_calls": num_snippets,
+        "daily_limit": daily_limit,
+        "fraction": round(fraction, 4),
+        "over_threshold": fraction > QUOTA_ABORT_THRESHOLD,
+    }
+    log.info(
+        f"Quota estimate (GROQ_MODEL_STRONG): {num_snippets} expected primary requests / "
+        f"{daily_limit} daily cap = {fraction:.1%}"
+    )
+    return estimate
 
 
 def _strip_fences(text: str) -> str:
@@ -92,6 +114,26 @@ def run(
     if limit is not None:
         snippets = snippets[:limit]
 
+    quota_estimate = estimate_quota(len(snippets))
+    if quota_estimate["over_threshold"]:
+        msg = (
+            f"ABORTING before any Stage 2 calls: estimated {quota_estimate['expected_calls']} "
+            f"requests is {quota_estimate['fraction']:.1%} of GROQ_MODEL_STRONG's "
+            f"{quota_estimate['daily_limit']}/day cap, over the {QUOTA_ABORT_THRESHOLD:.0%} threshold."
+        )
+        log.error(msg)
+        return {
+            "halted": True,
+            "halt_reasons": [msg],
+            "quota_estimate": quota_estimate,
+            "input_count": len(snippets),
+            "records": [],
+            "dropped": [],
+            "rate_limited_dropped": 0,
+            "malformed_dropped": 0,
+            "other_dropped": 0,
+        }
+
     records: list[dict] = []
     dropped: list[dict] = []
 
@@ -118,6 +160,8 @@ def run(
     )
 
     return {
+        "halted": False,
+        "quota_estimate": quota_estimate,
         "input_count": len(snippets),
         "records": records,
         "dropped": dropped,

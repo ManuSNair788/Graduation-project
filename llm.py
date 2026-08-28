@@ -20,6 +20,15 @@ RPM_LIMITS = {
     "GROQ_MODEL_SYNTHESIS": 30,
 }
 
+# Confirmed daily request caps (ARCHITECTURE.md header table). Pipeline stages use this to
+# estimate expected call volume and abort before making any calls if a run can't possibly
+# finish — see stage1_filter.py / stage2_extract.py's pre-run quota check.
+DAILY_REQUEST_LIMITS = {
+    "GROQ_MODEL_CHEAP": 250,
+    "GROQ_MODEL_STRONG": 1_000,
+    "GROQ_MODEL_SYNTHESIS": 1_000,
+}
+
 # ARCHITECTURE.md §4.4 point 1 — four retries beyond the original attempt.
 BACKOFF_SCHEDULE_S = [1, 2, 4, 8]
 
