@@ -1,4 +1,12 @@
+# Local-only scraper dependencies. Never installed on the deployed Space (ARCHITECTURE.md §2.9).
 google-play-scraper==1.2.7
-app-store-scraper==0.3.5
 praw==7.8.2
-requests==2.23.0
+requests==2.34.2
+urllib3==2.7.0
+
+# app-store-scraper (0.3.5) hard-pins requests==2.23.0, which conflicts with the requests
+# version above via pip's resolver. It's also unmaintained since ~2021 and its review-feed
+# scrape is dead regardless (see scraper.py's App Store docstring) — App Store is logged and
+# skipped by default. Install it only if you want to re-attempt that source, separately,
+# with its dependency check bypassed:
+#   pip install --no-deps app-store-scraper==0.3.5
