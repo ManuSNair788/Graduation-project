@@ -12,6 +12,14 @@ TPM_LIMITS = {
     "GROQ_MODEL_SYNTHESIS": 8_000,  # openai/gpt-oss-120b
 }
 
+# groq/compound-mini is RPM-bound rather than TPM-bound (30 RPM against 70K TPM), so the token
+# window alone won't keep it under its limit. All three models share the same 30 RPM cap.
+RPM_LIMITS = {
+    "GROQ_MODEL_CHEAP": 30,
+    "GROQ_MODEL_STRONG": 30,
+    "GROQ_MODEL_SYNTHESIS": 30,
+}
+
 # ARCHITECTURE.md §4.4 point 1 — four retries beyond the original attempt.
 BACKOFF_SCHEDULE_S = [1, 2, 4, 8]
 
@@ -46,6 +54,9 @@ _client_instance: Optional[Groq] = None
 
 # Per-model rolling one-minute token usage window: {model_env_var: [(monotonic_ts, tokens), ...]}
 _usage_windows: dict[str, list[tuple[float, int]]] = {}
+
+# Per-model rolling one-minute request-count window: {model_env_var: [monotonic_ts, ...]}
+_request_windows: dict[str, list[float]] = {}
 
 
 def _client() -> Groq:
@@ -89,6 +100,24 @@ def _record_usage(model_env_var: str, tokens: int) -> None:
     window.append((time.monotonic(), tokens))
 
 
+def _wait_for_rpm_headroom(model_env_var: str) -> None:
+    limit = RPM_LIMITS[model_env_var]
+    window = _request_windows.setdefault(model_env_var, [])
+    while True:
+        now = time.monotonic()
+        cutoff = now - 60
+        while window and window[0] < cutoff:
+            window.pop(0)
+        if len(window) < limit:
+            return
+        sleep_s = max(window[0] + 60 - now, 0.1)
+        time.sleep(sleep_s)
+
+
+def _record_request(model_env_var: str) -> None:
+    _request_windows.setdefault(model_env_var, []).append(time.monotonic())
+
+
 def _extract_token_usage(response) -> Optional[int]:
     usage = getattr(response, "usage", None)
     if usage is None:
@@ -116,17 +145,20 @@ def _call(
     expected_output_tokens: int = DEFAULT_EXPECTED_OUTPUT_TOKENS,
 ) -> LLMResult:
     model = os.environ[model_env_var]
-    _wait_for_tpm_headroom(model_env_var, prompt, expected_output_tokens)
-
     last_error: Optional[Exception] = None
 
     for attempt in range(len(BACKOFF_SCHEDULE_S) + 1):
+        # Checked before every attempt, not just the first — each retry is its own API call
+        # subject to both limits again.
+        _wait_for_tpm_headroom(model_env_var, prompt, expected_output_tokens)
+        _wait_for_rpm_headroom(model_env_var)
         try:
             response = _client().chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
                 timeout=timeout_s,
             )
+            _record_request(model_env_var)
             content = response.choices[0].message.content
             tokens_used = _extract_token_usage(response) or _estimate_tokens(
                 prompt, expected_output_tokens
@@ -134,6 +166,9 @@ def _call(
             _record_usage(model_env_var, tokens_used)
             return LLMResult(ok=True, text=content)
         except RateLimitError as exc:
+            # The 429 itself was still a request against the RPM budget, even though it
+            # consumed no token quota — record it, but not as token usage.
+            _record_request(model_env_var)
             last_error = exc
             if attempt < len(BACKOFF_SCHEDULE_S):
                 sleep_s = _retry_after_seconds(exc) or BACKOFF_SCHEDULE_S[attempt]
