@@ -14,8 +14,22 @@ log = logging.getLogger("scraper")
 
 OUTPUT_PATH = Path("data/raw_snippets.json")
 
-REDDIT_SEARCH_TERMS = ["AJIO", "Myntra wishlist", "online shopping size India", "fashion returns India"]
-YOUTUBE_SEARCH_QUERIES = ["AJIO haul", "Myntra haul", "AJIO try-on review", "Myntra try-on review"]
+REDDIT_SUBREDDITS = ["IndianFashionAddicts", "india", "TwoXIndia", "OnexIndian"]
+REDDIT_SEARCH_TERMS = ["wishlist", "AJIO", "Myntra", "online shopping size", "fashion returns India"]
+
+YOUTUBE_SEARCH_QUERIES = [
+    "AJIO haul",
+    "Myntra haul",
+    "AJIO try-on review",
+    "Myntra try-on review",
+    "AJIO try on haul",
+    "Myntra size guide",
+    "online shopping fails India",
+    "what I ordered vs what I got",
+    "AJIO honest review",
+]
+YOUTUBE_MAX_VIDEOS = 15
+YOUTUBE_COMMENTS_PER_VIDEO = 100  # single page per video, API max
 
 _next_id = 0
 
@@ -111,54 +125,88 @@ def scrape_app_store(app_id: int, app_name: str, label: str, target_count: int) 
 
 
 # ---------------------------------------------------------------------------
-# Reddit — public .json search endpoints
+# Reddit — PRAW, OAuth app-only (read-only) flow
 #
-# Known unreliable: as of this run, both www.reddit.com/search.json and
-# old.reddit.com/search.json return 403/404 for unauthenticated requests regardless of
-# User-Agent — Reddit appears to now block this outright. PRAW would need registered app
-# credentials (CONTEXT.md §9.4) that aren't set up. Logged and skipped per §9.7; paste
-# comments in manually if Reddit coverage is wanted.
+# The public .json search endpoints started rejecting all unauthenticated requests
+# (403/404 regardless of User-Agent — see git history for the earlier attempt). Switched to
+# a registered "script" app's client id/secret in read-only mode, which needs no user login,
+# just app credentials from reddit.com/prefs/apps. If REDDIT_CLIENT_ID/REDDIT_CLIENT_SECRET
+# aren't set, this is logged and skipped per CONTEXT.md §9.7 rather than blocking the run.
 # ---------------------------------------------------------------------------
 
 
 def scrape_reddit(target_count: int) -> list[dict]:
     snippets: list[dict] = []
+    client_id = os.environ.get("REDDIT_CLIENT_ID")
+    client_secret = os.environ.get("REDDIT_CLIENT_SECRET")
     user_agent = os.environ.get("REDDIT_USER_AGENT", "ajio-wishlist-research/1.0")
-    headers = {"User-Agent": user_agent}
-    per_term = max(target_count // len(REDDIT_SEARCH_TERMS), 1)
 
-    for term in REDDIT_SEARCH_TERMS:
+    if not client_id or not client_secret:
+        log.error(
+            "Reddit: REDDIT_CLIENT_ID/REDDIT_CLIENT_SECRET not set, skipping "
+            "(register a script app at reddit.com/prefs/apps — see .env.example)"
+        )
+        return snippets
+
+    try:
+        import praw
+
+        reddit = praw.Reddit(client_id=client_id, client_secret=client_secret, user_agent=user_agent)
+        reddit.read_only = True
+    except Exception as exc:
+        log.error(f"Reddit: PRAW auth setup FAILED, skipping: {exc}")
+        return snippets
+
+    per_combo = max(target_count // (len(REDDIT_SUBREDDITS) * len(REDDIT_SEARCH_TERMS)), 3)
+
+    for sub_name in REDDIT_SUBREDDITS:
+        if len(snippets) >= target_count:
+            break
         try:
-            r = requests.get(
-                "https://www.reddit.com/search.json",
-                params={"q": term, "limit": per_term, "sort": "relevance"},
-                headers=headers,
-                timeout=15,
-            )
-            r.raise_for_status()
-            posts = r.json().get("data", {}).get("children", [])
-            for p in posts:
-                d = p.get("data", {})
-                text = (d.get("selftext") or d.get("title") or "").strip()
-                if not text:
-                    continue
-                created = d.get("created_utc")
-                snippets.append(
-                    {
-                        "id": _make_id("reddit"),
-                        "source": "reddit",
-                        "date": datetime.utcfromtimestamp(created).strftime("%Y-%m-%d") if created else None,
-                        "rating": None,
-                        "text": text,
-                    }
-                )
-            time.sleep(2)  # courtesy delay between search terms
+            subreddit = reddit.subreddit(sub_name)
         except Exception as exc:
-            log.error(f"Reddit search '{term}' FAILED, skipping: {exc}")
+            log.error(f"Reddit r/{sub_name} FAILED to open, skipping: {exc}")
+            continue
 
-    log.info(f"Reddit: collected {len(snippets)} posts across {len(REDDIT_SEARCH_TERMS)} search terms")
-    if not snippets:
-        log.warning("Reddit: 0 snippets collected, see module docstring above for why.")
+        for term in REDDIT_SEARCH_TERMS:
+            if len(snippets) >= target_count:
+                break
+            try:
+                for submission in subreddit.search(term, limit=per_combo, sort="relevance"):
+                    text = (submission.selftext or submission.title or "").strip()
+                    if text:
+                        snippets.append(
+                            {
+                                "id": _make_id("reddit"),
+                                "source": "reddit",
+                                "date": datetime.utcfromtimestamp(submission.created_utc).strftime("%Y-%m-%d"),
+                                "rating": None,
+                                "text": text,
+                            }
+                        )
+
+                    submission.comments.replace_more(limit=0)
+                    for comment in submission.comments[:5]:
+                        c_text = (comment.body or "").strip()
+                        if c_text and c_text not in ("[deleted]", "[removed]"):
+                            snippets.append(
+                                {
+                                    "id": _make_id("reddit"),
+                                    "source": "reddit",
+                                    "date": datetime.utcfromtimestamp(comment.created_utc).strftime("%Y-%m-%d"),
+                                    "rating": None,
+                                    "text": c_text,
+                                }
+                            )
+                    if len(snippets) >= target_count:
+                        break
+            except Exception as exc:
+                log.error(f"Reddit r/{sub_name} search '{term}' FAILED, skipping: {exc}")
+
+    log.info(
+        f"Reddit: collected {len(snippets)} snippets across {len(REDDIT_SUBREDDITS)} subreddits "
+        f"× {len(REDDIT_SEARCH_TERMS)} search terms"
+    )
     return snippets
 
 
@@ -167,17 +215,19 @@ def scrape_reddit(target_count: int) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def scrape_youtube(target_count: int) -> list[dict]:
+def scrape_youtube() -> list[dict]:
     snippets: list[dict] = []
     api_key = os.environ.get("YOUTUBE_API_KEY")
     if not api_key:
         log.error("YouTube: YOUTUBE_API_KEY not set, skipping")
         return snippets
 
-    videos_per_query = 5
-    comments_per_video = max(target_count // (len(YOUTUBE_SEARCH_QUERIES) * videos_per_query), 5)
+    seen_video_ids: set[str] = set()
+    video_queue: list[str] = []
 
     for query in YOUTUBE_SEARCH_QUERIES:
+        if len(video_queue) >= YOUTUBE_MAX_VIDEOS:
+            break
         try:
             search_r = requests.get(
                 "https://www.googleapis.com/youtube/v3/search",
@@ -185,52 +235,57 @@ def scrape_youtube(target_count: int) -> list[dict]:
                     "part": "snippet",
                     "q": query,
                     "type": "video",
-                    "maxResults": videos_per_query,
+                    "maxResults": 5,
                     "key": api_key,
                 },
                 timeout=15,
             )
             search_r.raise_for_status()
-            video_ids = [item["id"]["videoId"] for item in search_r.json().get("items", [])]
+            for item in search_r.json().get("items", []):
+                vid = item["id"]["videoId"]
+                if vid not in seen_video_ids and len(video_queue) < YOUTUBE_MAX_VIDEOS:
+                    seen_video_ids.add(vid)
+                    video_queue.append(vid)
         except Exception as exc:
             log.error(f"YouTube search '{query}' FAILED, skipping: {exc}")
-            continue
 
-        for video_id in video_ids:
-            try:
-                c_r = requests.get(
-                    "https://www.googleapis.com/youtube/v3/commentThreads",
-                    params={
-                        "part": "snippet",
-                        "videoId": video_id,
-                        "maxResults": comments_per_video,
-                        "order": "relevance",
-                        "key": api_key,
-                    },
-                    timeout=15,
+    log.info(f"YouTube: {len(video_queue)} unique videos queued across {len(YOUTUBE_SEARCH_QUERIES)} search queries")
+
+    for video_id in video_queue:
+        try:
+            c_r = requests.get(
+                "https://www.googleapis.com/youtube/v3/commentThreads",
+                params={
+                    "part": "snippet",
+                    "videoId": video_id,
+                    "maxResults": YOUTUBE_COMMENTS_PER_VIDEO,
+                    "order": "relevance",
+                    "key": api_key,
+                },
+                timeout=15,
+            )
+            if c_r.status_code == 403:
+                continue  # comments disabled on this video — not a scraper failure
+            c_r.raise_for_status()
+            for item in c_r.json().get("items", []):
+                top = item["snippet"]["topLevelComment"]["snippet"]
+                text = (top.get("textOriginal") or "").strip()
+                if not text:
+                    continue
+                published = top.get("publishedAt")
+                snippets.append(
+                    {
+                        "id": _make_id("youtube"),
+                        "source": "youtube",
+                        "date": published[:10] if published else None,
+                        "rating": None,
+                        "text": text,
+                    }
                 )
-                if c_r.status_code == 403:
-                    continue  # comments disabled on this video — not a scraper failure
-                c_r.raise_for_status()
-                for item in c_r.json().get("items", []):
-                    top = item["snippet"]["topLevelComment"]["snippet"]
-                    text = (top.get("textOriginal") or "").strip()
-                    if not text:
-                        continue
-                    published = top.get("publishedAt")
-                    snippets.append(
-                        {
-                            "id": _make_id("youtube"),
-                            "source": "youtube",
-                            "date": published[:10] if published else None,
-                            "rating": None,
-                            "text": text,
-                        }
-                    )
-            except Exception as exc:
-                log.error(f"YouTube comments for video {video_id} FAILED, skipping: {exc}")
+        except Exception as exc:
+            log.error(f"YouTube comments for video {video_id} FAILED, skipping: {exc}")
 
-    log.info(f"YouTube: collected {len(snippets)} comments across {len(YOUTUBE_SEARCH_QUERIES)} search queries")
+    log.info(f"YouTube: collected {len(snippets)} comments across {len(video_queue)} videos")
     return snippets
 
 
@@ -241,7 +296,7 @@ def main() -> None:
     all_snippets += scrape_google_play("com.myntra.android", "Myntra", target_count=1000)
     all_snippets += scrape_app_store(1113425372, "ajio", "AJIO", target_count=500)
     all_snippets += scrape_reddit(target_count=300)
-    all_snippets += scrape_youtube(target_count=300)
+    all_snippets += scrape_youtube()
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
