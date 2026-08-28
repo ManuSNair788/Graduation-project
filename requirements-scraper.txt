@@ -1,0 +1,4 @@
+google-play-scraper==1.2.7
+app-store-scraper==0.3.5
+praw==7.8.2
+requests==2.23.0
