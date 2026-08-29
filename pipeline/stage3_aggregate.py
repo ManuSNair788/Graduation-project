@@ -16,7 +16,15 @@ OTHER_NOTE = (
     "Dominated by low-value \"please share the link\" comments that passed the Stage 1 "
     "relevance filter (they're about a fashion purchase) but carry no purchase-hesitation "
     "signal. Not a ranked opportunity area — it's a residual bucket, not something comparable "
-    "or actionable against the 8 named barriers below."
+    "or actionable against the named barriers below."
+)
+
+MIN_EVIDENCE_COUNT = 3
+
+INSUFFICIENT_EVIDENCE_NOTE = (
+    "Excluded from ranking: a category built on fewer than 3 snippets can be a single "
+    "misclassified snippet rather than a real pattern (see Evidence tab). Not ranked "
+    "alongside the barriers above, and not folded into their frequency_percent denominator."
 )
 
 
@@ -31,9 +39,15 @@ def aggregate_records(records: list[dict]) -> dict:
 
     Correction (author): "other" is a residual bucket, not an opportunity area — ranking it
     first (it was the largest category) made the output unusable for its stated purpose. It's
-    excluded from the ranked barrier_table and reported separately instead; the 8 named
+    excluded from the ranked barrier_table and reported separately instead; the named
     barriers' frequency_percent is recomputed against the non-"other" corpus, with both
     denominators stated so the numbers are traceable.
+
+    Correction (author): a barrier built on fewer than MIN_EVIDENCE_COUNT snippets carries the
+    same problem as "other" — one misclassified snippet (e.g. "please pin the link of white
+    top" landing in choice_overload) produces a fully-formed-looking score with nothing real
+    behind it. Applying the same principle: excluded from the ranked table, excluded from its
+    frequency_percent denominator, reported separately with counts only (no score).
     """
     total = len(records)
     by_barrier = defaultdict(list)
@@ -44,10 +58,16 @@ def aggregate_records(records: list[dict]) -> dict:
     other_count = len(other_records)
     non_other_total = total - other_count
 
+    thin_barriers = {b: recs for b, recs in by_barrier.items() if len(recs) < MIN_EVIDENCE_COUNT}
+    for b in thin_barriers:
+        by_barrier.pop(b)
+    insufficient_evidence_total = sum(len(recs) for recs in thin_barriers.values())
+    ranked_total = non_other_total - insufficient_evidence_total
+
     barrier_table = []
     for barrier, recs in by_barrier.items():
         count = len(recs)
-        freq_pct = (count / non_other_total * 100) if non_other_total else 0.0
+        freq_pct = (count / ranked_total * 100) if ranked_total else 0.0
         mean_intensity = sum(r["intensity"] for r in recs) / count if count else 0.0
         addressable_share = (
             sum(1 for r in recs if r["addressable_without_money"]) / count if count else 0.0
@@ -71,6 +91,17 @@ def aggregate_records(records: list[dict]) -> dict:
         "note": OTHER_NOTE,
     }
 
+    insufficient_evidence = sorted(
+        [{"barrier": b, "count": len(recs)} for b, recs in thin_barriers.items()],
+        key=lambda b: -b["count"],
+    )
+    insufficient_evidence_summary = {
+        "items": insufficient_evidence,
+        "total_count": insufficient_evidence_total,
+        "min_evidence_count": MIN_EVIDENCE_COUNT,
+        "note": INSUFFICIENT_EVIDENCE_NOTE,
+    }
+
     # Cross-cuts intentionally still include "other" — they're breakdowns, not rankings, and
     # showing the full picture (noise included) there is the honest choice.
     cross_save_intent = defaultdict(lambda: defaultdict(int))
@@ -85,7 +116,9 @@ def aggregate_records(records: list[dict]) -> dict:
     return {
         "total_records": total,
         "non_other_total": non_other_total,
+        "ranked_total": ranked_total,
         "other_summary": other_summary,
+        "insufficient_evidence_summary": insufficient_evidence_summary,
         "barrier_table": barrier_table,
         "barrier_x_save_intent": {b: dict(v) for b, v in cross_save_intent.items()},
         "barrier_x_segment_signal": {b: dict(v) for b, v in cross_segment.items()},

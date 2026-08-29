@@ -1,75 +1,71 @@
 {
   "total_records": 204,
   "non_other_total": 90,
+  "ranked_total": 86,
   "other_summary": {
     "count": 114,
     "percent_of_corpus": 55.88,
-    "note": "Dominated by low-value \"please share the link\" comments that passed the Stage 1 relevance filter (they're about a fashion purchase) but carry no purchase-hesitation signal. Not a ranked opportunity area — it's a residual bucket, not something comparable or actionable against the 8 named barriers below."
+    "note": "Dominated by low-value \"please share the link\" comments that passed the Stage 1 relevance filter (they're about a fashion purchase) but carry no purchase-hesitation signal. Not a ranked opportunity area — it's a residual bucket, not something comparable or actionable against the named barriers below."
+  },
+  "insufficient_evidence_summary": {
+    "items": [
+      {
+        "barrier": "occasion_fit",
+        "count": 2
+      },
+      {
+        "barrier": "choice_overload",
+        "count": 1
+      },
+      {
+        "barrier": "styling_doubt",
+        "count": 1
+      }
+    ],
+    "total_count": 4,
+    "min_evidence_count": 3,
+    "note": "Excluded from ranking: a category built on fewer than 3 snippets can be a single misclassified snippet rather than a real pattern (see Evidence tab). Not ranked alongside the barriers above, and not folded into their frequency_percent denominator."
   },
   "barrier_table": [
     {
       "barrier": "fit_size",
       "count": 22,
-      "frequency_percent": 24.44,
+      "frequency_percent": 25.58,
       "mean_intensity": 3.32,
       "addressable_share": 1.0,
-      "opportunity_score": 81.11
+      "opportunity_score": 84.88
     },
     {
       "barrier": "quality_doubt",
       "count": 25,
-      "frequency_percent": 27.78,
+      "frequency_percent": 29.07,
       "mean_intensity": 2.84,
       "addressable_share": 1.0,
-      "opportunity_score": 78.89
+      "opportunity_score": 82.56
     },
     {
       "barrier": "trust_returns",
       "count": 19,
-      "frequency_percent": 21.11,
+      "frequency_percent": 22.09,
       "mean_intensity": 3.47,
       "addressable_share": 0.95,
-      "opportunity_score": 73.33
+      "opportunity_score": 76.74
     },
     {
       "barrier": "price_uncertainty",
       "count": 14,
-      "frequency_percent": 15.56,
+      "frequency_percent": 16.28,
       "mean_intensity": 3.14,
       "addressable_share": 0.57,
-      "opportunity_score": 48.89
+      "opportunity_score": 51.16
     },
     {
       "barrier": "stock_size_unavailable",
       "count": 6,
-      "frequency_percent": 6.67,
+      "frequency_percent": 6.98,
       "mean_intensity": 2.83,
       "addressable_share": 1.0,
-      "opportunity_score": 18.89
-    },
-    {
-      "barrier": "choice_overload",
-      "count": 1,
-      "frequency_percent": 1.11,
-      "mean_intensity": 3.0,
-      "addressable_share": 1.0,
-      "opportunity_score": 3.33
-    },
-    {
-      "barrier": "styling_doubt",
-      "count": 1,
-      "frequency_percent": 1.11,
-      "mean_intensity": 3.0,
-      "addressable_share": 1.0,
-      "opportunity_score": 3.33
-    },
-    {
-      "barrier": "occasion_fit",
-      "count": 2,
-      "frequency_percent": 2.22,
-      "mean_intensity": 4.0,
-      "addressable_share": 0.5,
-      "opportunity_score": 2.67
+      "opportunity_score": 19.77
     }
   ],
   "barrier_x_save_intent": {

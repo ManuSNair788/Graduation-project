@@ -55,15 +55,20 @@ def render_opportunity_table(aggregates: dict, key_prefix: str = "") -> None:
 
     total_records = aggregates.get("total_records")
     non_other_total = aggregates.get("non_other_total")
+    ranked_total = aggregates.get("ranked_total", non_other_total)
     other = aggregates.get("other_summary")
+    insufficient = aggregates.get("insufficient_evidence_summary")
 
+    excluded_bits = []
     if other and other["count"]:
-        denom_note = (
-            f"Ranked below: **{non_other_total} of {total_records}** classified snippets "
-            f"(the {other['count']} classified as `other` — {other['percent_of_corpus']}% of the "
-            f"corpus — are excluded from ranking and reported below the table)."
+        excluded_bits.append(f"{other['count']} classified as `other`")
+    if insufficient and insufficient["total_count"]:
+        excluded_bits.append(f"{insufficient['total_count']} below the evidence threshold")
+    if excluded_bits:
+        st.caption(
+            f"Ranked below: **{ranked_total} of {total_records}** classified snippets "
+            f"({' and '.join(excluded_bits)} are excluded from ranking and reported below the table)."
         )
-        st.caption(denom_note)
 
     df = pd.DataFrame(aggregates["barrier_table"]).sort_values("opportunity_score", ascending=False)
     st.dataframe(df, width="stretch", hide_index=True)
@@ -71,15 +76,22 @@ def render_opportunity_table(aggregates: dict, key_prefix: str = "") -> None:
     st.caption(
         "**Opportunity Score = frequency_percent x mean_intensity x addressability_weight** "
         "(addressability_weight = 1.0 if the majority of that barrier's snippets are "
-        "addressable_without_money, else 0.3). frequency_percent for the 8 ranked barriers is "
-        f"computed against **{non_other_total}** (total minus `other`), not the full "
-        f"**{total_records}**."
+        f"addressable_without_money, else 0.3). frequency_percent for the {len(df)} ranked "
+        f"barriers is computed against **{ranked_total}** (total minus `other` minus the "
+        f"below-threshold categories), not the full **{total_records}**."
     )
 
     if other and other["count"]:
         st.warning(
             f"**`other` — {other['count']} snippets ({other['percent_of_corpus']}% of the "
             f"{total_records}-snippet corpus) — excluded from the ranking above.**\n\n{other['note']}"
+        )
+
+    if insufficient and insufficient["items"]:
+        rows = "\n".join(f"- `{item['barrier']}` — {item['count']} snippet(s)" for item in insufficient["items"])
+        st.warning(
+            f"**Insufficient evidence to rank** (fewer than {insufficient['min_evidence_count']} "
+            f"snippets):\n\n{rows}\n\n{insufficient['note']}"
         )
 
 
@@ -217,65 +229,155 @@ with tab4:
     extractions = cached["extractions"] or []
     aggregates = cached["aggregates"] or {}
     barrier_table = aggregates.get("barrier_table", [])
+    insufficient = aggregates.get("insufficient_evidence_summary", {"items": [], "total_count": 0})
     synthesis = cached["synthesis"] or {}
 
     def barrier_row(name):
         return next((b for b in barrier_table if b["barrier"] == name), None)
 
+    def insufficient_row(name):
+        return next((b for b in insufficient.get("items", []) if b["barrier"] == name), None)
+
+    total_extractions = len(extractions)
     save_intent_counts = Counter(r["save_intent"] for r in extractions)
+    unclear_count = save_intent_counts.get("unclear", 0)
+    classifiable_count = total_extractions - unclear_count
+    classifiable_counts = Counter(
+        r["save_intent"] for r in extractions if r["save_intent"] != "unclear"
+    )
     journey_saved_revisit = [r for r in extractions if r["journey_stage"] in ("saved", "revisit")]
     journey_barrier_counts = Counter(r["barrier"] for r in journey_saved_revisit)
     info_sought = [r["info_sought_outside_app"] for r in extractions if r.get("info_sought_outside_app")]
     workarounds = [r["workaround"] for r in extractions if r.get("workaround")]
-    choice_overload_rows = [r for r in extractions if r["barrier"] == "choice_overload"]
 
     st.markdown("**1. Why do users add fashion products to their wishlist?**")
-    st.write(f"`save_intent` distribution across {len(extractions)} classified snippets:")
-    st.write(dict(save_intent_counts))
+    st.write(
+        f"`save_intent` was unclear for **{unclear_count} of {total_extractions}** classified "
+        f"snippets — too little context in the snippet itself to tell. The answer below comes "
+        f"from the **{classifiable_count}** that were classifiable."
+    )
+    st.dataframe(
+        pd.DataFrame(
+            [{"save_intent": k, "count": v} for k, v in classifiable_counts.most_common()]
+        ),
+        width="stretch",
+        hide_index=True,
+    )
 
     st.markdown("**2. What prevents wishlisted products from eventually being purchased?**")
-    st.write("Barrier ranking by Opportunity Score (see Tab 2 for the full table):")
-    st.write([(b["barrier"], b["opportunity_score"]) for b in barrier_table[:3]])
+    top3 = barrier_table[:3]
+    if top3:
+        lead = ", ".join(f"`{b['barrier']}`" for b in top3)
+        st.write(
+            f"The top three ranked barriers are {lead}, led by `{top3[0]['barrier']}` at an "
+            f"Opportunity Score of **{top3[0]['opportunity_score']}** ({top3[0]['count']} snippets)."
+        )
+    st.dataframe(
+        pd.DataFrame([{"barrier": b["barrier"], "opportunity_score": b["opportunity_score"], "count": b["count"]} for b in barrier_table]),
+        width="stretch",
+        hide_index=True,
+    )
 
     st.markdown("**3. What uncertainties remain after users identify a product they like?**")
     st.write(
-        f"Barrier counts restricted to `journey_stage` in (saved, revisit) - "
-        f"{len(journey_saved_revisit)} snippets:"
+        f"Restricting to snippets where `journey_stage` is saved or revisit "
+        f"(**{len(journey_saved_revisit)}** snippets) surfaces which barriers persist after the "
+        f"product is already chosen:"
     )
-    st.write(dict(journey_barrier_counts))
+    st.dataframe(
+        pd.DataFrame(
+            [{"barrier": k, "count": v} for k, v in sorted(journey_barrier_counts.items(), key=lambda kv: -kv[1])]
+        ),
+        width="stretch",
+        hide_index=True,
+    )
 
     st.markdown("**4. What causes users to postpone a purchase?**")
-    st.write("Barriers ranked by mean intensity:")
-    st.write(
-        [(b["barrier"], b["mean_intensity"]) for b in sorted(barrier_table, key=lambda b: -b["mean_intensity"])[:3]]
+    by_intensity = sorted(barrier_table, key=lambda b: -b["mean_intensity"])[:3]
+    if by_intensity:
+        st.write(
+            f"`{by_intensity[0]['barrier']}` carries the highest mean intensity at "
+            f"**{by_intensity[0]['mean_intensity']}** (scale per ARCHITECTURE.md §2.5), "
+            f"followed by " + ", ".join(f"`{b['barrier']}` ({b['mean_intensity']})" for b in by_intensity[1:]) + "."
+        )
+    st.dataframe(
+        pd.DataFrame([{"barrier": b["barrier"], "mean_intensity": b["mean_intensity"]} for b in by_intensity]),
+        width="stretch",
+        hide_index=True,
     )
 
     st.markdown("**5. How do users compare multiple shortlisted products?**")
-    co = barrier_row("choice_overload")
-    st.write(f"`choice_overload`: {co['count'] if co else 0} snippets, example workarounds:")
-    st.write([r["workaround"] for r in choice_overload_rows if r.get("workaround")][:5])
+    co = insufficient_row("choice_overload")
+    if co:
+        st.write(
+            f"`choice_overload` has only **{co['count']} snippet** in the corpus — below the "
+            f"n>=3 evidence threshold (Tab 2), so it is not part of the ranked barrier table. "
+            f"The single snippet behind it (\"please pin the link of white top\") is a link "
+            f"request, not evidence of comparison-driven hesitation, which is why it does not "
+            f"support a ranked score."
+        )
+    else:
+        st.write("`choice_overload` did not appear in this run's extractions.")
 
     st.markdown("**6. What information do users seek outside AJIO before purchasing?**")
-    st.write(f"{len(info_sought)} snippets named something sought outside the app, e.g.:")
-    st.write(info_sought[:5])
+    st.write(
+        f"**{len(info_sought)}** of {total_extractions} snippets named something the user sought "
+        f"outside the app before deciding. A sample:"
+    )
+    st.dataframe(pd.DataFrame({"info_sought_outside_app": info_sought[:5]}), width="stretch", hide_index=True)
 
     st.markdown("**7. What role do fit, size, styling, price, reviews, occasion, social validation play?**")
-    st.write("Full barrier table (see Tab 2).")
-    st.write([(b["barrier"], b["count"], b["frequency_percent"]) for b in barrier_table])
+    st.write(
+        "The full ranked barrier table (Tab 2) answers this directly — each row's "
+        "`frequency_percent` is that theme's share of the classifiable, above-threshold corpus:"
+    )
+    st.dataframe(
+        pd.DataFrame([{"barrier": b["barrier"], "count": b["count"], "frequency_percent": b["frequency_percent"]} for b in barrier_table]),
+        width="stretch",
+        hide_index=True,
+    )
 
     st.markdown("**8. When is the wishlist genuine purchase intent vs simply a bookmark?**")
-    st.write("Barrier x save_intent cross-cut:")
-    st.write(aggregates.get("barrier_x_save_intent", {}))
+    st.write(
+        "Cross-cutting each barrier by `save_intent` shows which ones skew toward "
+        "`purchase_intent` versus `bookmarking` or `aspiration`:"
+    )
+    cross_si = aggregates.get("barrier_x_save_intent", {})
+    si_rows = []
+    for barrier, counts in cross_si.items():
+        row = {"barrier": barrier}
+        row.update(counts)
+        si_rows.append(row)
+    st.dataframe(pd.DataFrame(si_rows), width="stretch", hide_index=True)
 
     st.markdown("**9. How do these behaviours differ across user segments?**")
-    st.write("Barrier x segment_signal cross-cut:")
-    st.write(aggregates.get("barrier_x_segment_signal", {}))
+    st.write(
+        "`segment_signal` is free-text per snippet (see ARCHITECTURE.md §2.5), so most values "
+        "are unique to a single snippet rather than a reusable label. For the ranked barriers, "
+        "the table below shows how many distinct segment descriptions appear per barrier and "
+        "the one description repeated most often, if any repeated at all:"
+    )
+    cross_seg = aggregates.get("barrier_x_segment_signal", {})
+    seg_rows = []
+    for b in barrier_table:
+        barrier = b["barrier"]
+        counts = cross_seg.get(barrier, {})
+        top_label, top_count = max(counts.items(), key=lambda kv: kv[1]) if counts else (None, 0)
+        seg_rows.append(
+            {
+                "barrier": barrier,
+                "distinct_segment_descriptions": len(counts),
+                "most_repeated": top_label if top_count > 1 else "(none repeated)",
+                "repeat_count": top_count if top_count > 1 else 0,
+            }
+        )
+    st.dataframe(pd.DataFrame(seg_rows), width="stretch", hide_index=True)
 
     st.markdown("**10. What unmet needs emerge consistently across user conversations?**")
-    st.write(f"{len(workarounds)} workarounds observed, e.g.:")
-    st.write(workarounds[:5])
+    st.write(f"**{len(workarounds)}** of {total_extractions} snippets described a workaround the user improvised. A sample:")
+    st.dataframe(pd.DataFrame({"workaround": workarounds[:5]}), width="stretch", hide_index=True)
     if synthesis.get("available"):
-        st.write("Stage 4 synthesis:")
+        st.write("Stage 4 synthesis, generated from the full corpus:")
         st.markdown(synthesis["text"])
     else:
         st.info("Stage 4 synthesis unavailable for this run.")
