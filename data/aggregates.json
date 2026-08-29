@@ -1,0 +1,297 @@
+{
+  "total_records": 204,
+  "barrier_table": [
+    {
+      "barrier": "other",
+      "count": 114,
+      "frequency_percent": 55.88,
+      "mean_intensity": 1.6,
+      "addressable_share": 0.91,
+      "opportunity_score": 89.22
+    },
+    {
+      "barrier": "fit_size",
+      "count": 22,
+      "frequency_percent": 10.78,
+      "mean_intensity": 3.32,
+      "addressable_share": 1.0,
+      "opportunity_score": 35.78
+    },
+    {
+      "barrier": "quality_doubt",
+      "count": 25,
+      "frequency_percent": 12.25,
+      "mean_intensity": 2.84,
+      "addressable_share": 1.0,
+      "opportunity_score": 34.8
+    },
+    {
+      "barrier": "trust_returns",
+      "count": 19,
+      "frequency_percent": 9.31,
+      "mean_intensity": 3.47,
+      "addressable_share": 0.95,
+      "opportunity_score": 32.35
+    },
+    {
+      "barrier": "price_uncertainty",
+      "count": 14,
+      "frequency_percent": 6.86,
+      "mean_intensity": 3.14,
+      "addressable_share": 0.57,
+      "opportunity_score": 21.57
+    },
+    {
+      "barrier": "stock_size_unavailable",
+      "count": 6,
+      "frequency_percent": 2.94,
+      "mean_intensity": 2.83,
+      "addressable_share": 1.0,
+      "opportunity_score": 8.33
+    },
+    {
+      "barrier": "choice_overload",
+      "count": 1,
+      "frequency_percent": 0.49,
+      "mean_intensity": 3.0,
+      "addressable_share": 1.0,
+      "opportunity_score": 1.47
+    },
+    {
+      "barrier": "styling_doubt",
+      "count": 1,
+      "frequency_percent": 0.49,
+      "mean_intensity": 3.0,
+      "addressable_share": 1.0,
+      "opportunity_score": 1.47
+    },
+    {
+      "barrier": "occasion_fit",
+      "count": 2,
+      "frequency_percent": 0.98,
+      "mean_intensity": 4.0,
+      "addressable_share": 0.5,
+      "opportunity_score": 1.18
+    }
+  ],
+  "barrier_x_save_intent": {
+    "price_uncertainty": {
+      "unclear": 8,
+      "comparison": 3,
+      "purchase_intent": 2,
+      "bookmarking": 1
+    },
+    "other": {
+      "unclear": 59,
+      "purchase_intent": 32,
+      "comparison": 8,
+      "aspiration": 9,
+      "bookmarking": 6
+    },
+    "fit_size": {
+      "unclear": 14,
+      "comparison": 1,
+      "purchase_intent": 6,
+      "aspiration": 1
+    },
+    "occasion_fit": {
+      "purchase_intent": 1,
+      "unclear": 1
+    },
+    "stock_size_unavailable": {
+      "aspiration": 2,
+      "purchase_intent": 2,
+      "unclear": 1,
+      "comparison": 1
+    },
+    "quality_doubt": {
+      "unclear": 13,
+      "purchase_intent": 2,
+      "comparison": 10
+    },
+    "choice_overload": {
+      "bookmarking": 1
+    },
+    "trust_returns": {
+      "unclear": 16,
+      "comparison": 1,
+      "purchase_intent": 2
+    },
+    "styling_doubt": {
+      "aspiration": 1
+    }
+  },
+  "barrier_x_segment_signal": {
+    "price_uncertainty": {
+      "Price-sensitive user using casual/informal language": 1,
+      "price sensitive student/young user": 1,
+      "value-seeker concerned about price history transparency": 1,
+      "unspecified": 2,
+      "Price-conscious shopper seeking specific product pricing": 1,
+      "Price-sensitive shopper actively comparing alternatives": 1,
+      "price_sensitive": 1,
+      "price-sensitive customer": 1,
+      "price-sensitive value seeker": 2,
+      "price-sensitive but quality-conscious customer": 1,
+      "social validation seeker": 1,
+      "Price-sensitive Gap brand buyer": 1
+    },
+    "other": {
+      "unspecified": 43,
+      "social sharer": 1,
+      "Telugu-speaking female user seeking specific product": 1,
+      "South Indian female (Telugu speaker)": 1,
+      "new_user_or_unfamiliar_with_promo_mechanics": 1,
+      "immediate purchase seeker for specific item": 1,
+      "User requesting specific product link": 1,
+      "external_sharer": 1,
+      "user seeking specific product link from content/video": 1,
+      "joyful_consumer": 1,
+      "loyal_brand_fan": 1,
+      "users who appreciate visual and audio presentation": 1,
+      "aesthetics-driven": 1,
+      "Wedding shopper seeking affordable options": 1,
+      "Brand loyal followers seeking specific niche collections": 1,
+      "Long-time customer experiencing content fatigue and seeking inclusive sizing/curation for older demographics": 1,
+      "null": 3,
+      "broadly satisfied user": 1,
+      "Visuator with positive aesthetic appreciation": 1,
+      "active shopper with immediate interest": 1,
+      "User seeking specific product link": 1,
+      "Fashion-forward female seeking external product discovery": 1,
+      "Influencer/Content Consumer seeking specific item": 1,
+      "Aesthetic-driven buyer valuing visual appeal": 1,
+      "Aesthetic enthusiast with high confidence in designer taste": 1,
+      "enthusiastic buyer": 1,
+      "Satisfied visual aesthetic seeker": 1,
+      "User specifically seeking white variant": 1,
+      "informed customer seeking specific product reference": 1,
+      "casual_user": 1,
+      "satisfied customer": 1,
+      "unengaged user": 1,
+      "Cash on Delivery dependent user": 1,
+      "User seeing item in feed or social context lacking product metadata": 1,
+      "User viewing community-shared content": 1,
+      "Price-sensitive buyer seeking affordable ethnic wear": 1,
+      "User seeking price information for a specific product": 1,
+      "satisfied repeat buyer": 1,
+      "budget-conscious": 1,
+      "Gift buyer for sister's birthday": 1,
+      "Price-sensitive user comparing Myntra with Meesho": 1,
+      "aesthetic-sensitive shopper": 1,
+      "satisfied_with_quality": 1,
+      "Value-conscious user assessing brand aesthetic worth of investment": 1,
+      "User comparing brand aesthetics (colors/vibes) between Myntra and Meesho": 1,
+      "Value-conscious user preferring Meesho": 1,
+      "Price-sensitive peer retailer switcher": 1,
+      "Collectors of small furniture and plush digits": 1,
+      "price‑sensitive office workers": 1,
+      "Customer who buys from Temu and finds the quality acceptable": 1,
+      "Loyal competitor user (Temu) satisfied with price and product": 1,
+      "social validation seeker": 1,
+      "Loyal to existing platforms, hostile to Temu brand": 1,
+      "interested customer seeking more inventory": 1,
+      "user asking about product source or availability": 1,
+      "First-time buyers or users unfamiliar with specific product configurations": 1,
+      "Needs styling guidance/tutorials": 1,
+      "price-sensitive first-time customer": 1,
+      "long-term habit user": 1,
+      "long-term loyal user (7 years)": 1,
+      "long-term user (6-7 years)": 1,
+      "long-term indecisive user (4 years)": 1,
+      "skeptical user aware of return/price tricks": 1,
+      "long-term user": 1,
+      "Satisfied user pleased with features, collection, and material": 1,
+      "positive sentiment responder": 1,
+      "heavy wishlist users": 1,
+      "satisfied user with positive sentiment toward variety": 1,
+      "trend‑seeking fashion enthusiasts": 1,
+      "satisfaction-focused apparel buyer": 1
+    },
+    "fit_size": {
+      "User seeking basic size specification information": 1,
+      "tall female": 1,
+      "size-conscious buyer seeking height-based fit validation": 1,
+      "bust-focused lingerie shopper seeking fit guidance": 1,
+      "User seeking specific product dimension details": 1,
+      "User uncertain about their correct size": 1,
+      "fit-conscious buyer": 2,
+      "unspecified": 1,
+      "plus size female with wide hips inheriting maternal build traits": 1,
+      "User with specific, non-standard fit requirements across international contexts": 1,
+      "Repeat buyer of jeans": 1,
+      "Parent buying transition clothing for an 11-year-old male": 1,
+      "size-uncertain denim buyer": 1,
+      "Temu user checking comments and measurements": 1,
+      "Users concerned about body-type-specific fit": 1,
+      "User who values garment structure and tailoring interventions": 1,
+      "teens with fast metabolism/super skinny build": 1,
+      "User intending to gift clothing, frustrated by lack of fit assurance": 1,
+      "DIY-savvy customer who accepts minor fit imperfections if quality is good": 1,
+      "User interested in bodycon dresses": 1,
+      "users sensitive to body diversity and inclusivity": 1
+    },
+    "occasion_fit": {
+      "Wedding shopper seeking ready-to-wear sarees": 1,
+      "user concerned about age-appropriateness or social norms": 1
+    },
+    "stock_size_unavailable": {
+      "Users seeking specific brand hauls (Biba) but unable to fulfill current demand": 1,
+      "User seeking specific apparel link, indicates prior interest in a pink shirt": 1,
+      "Size 2 seeker": 1,
+      "unspecified": 1,
+      "parents of babies": 1,
+      "Price-sensitive user seeking low-cost options": 1
+    },
+    "quality_doubt": {
+      "Value-conscious buyer concerned about fabric opacity": 1,
+      "First-time buyer of ethnic wear": 1,
+      "User seeking comfort and seamless fit under clothing.": 1,
+      "quality-conscious quality comparator": 1,
+      "value-sensitive buyer disappointed by fabric quality relative to price": 1,
+      "price-sensitive consumer comparing platforms": 1,
+      "Cross-platform price/quality comparison shopper": 1,
+      "User comparing fabric types across brands or listings": 1,
+      "owner of same product from competitor": 1,
+      "sensitive to fabric appearance": 1,
+      "Price-conscious buyer sensitive to perceived premium quality": 1,
+      "Skeptic of low-cost platforms/Myntra loyalist": 1,
+      "value-conscious buyer": 1,
+      "Users perceiving Myntra as having higher quality and aesthetics than competitors like Meesho": 1,
+      "Value-conscious detail-oriented customer": 1,
+      "quality-conscious shopper": 1,
+      "quality-conscious shopper comparing brands": 1,
+      "price-sensitive value seeker comparing platforms for perceived quality": 1,
+      "Price-sensitive buyer concerned about material finish": 1,
+      "Material-conscious buyer comparing e-commerce platforms": 1,
+      "null": 1,
+      "value-sensitive user shopping on alternative platforms": 1,
+      "satisfied low-value buyer": 1,
+      "parent of infant": 1,
+      "post-purchase customer concerned about product integrity during service": 1
+    },
+    "choice_overload": {
+      "user seeking specific item retrieval": 1
+    },
+    "trust_returns": {
+      "unspecified": 6,
+      "Multi-platform shopper": 1,
+      "User seeking exchange/replacement for unsatisfactory item": 1,
+      "Color-sensitive shopper verifying visual accuracy across platforms": 1,
+      "cautious_buyer": 1,
+      "price-sensitive consumers comparing against low-cost marketplaces": 1,
+      "New shopper interested in style authenticity": 1,
+      "price-conscious buyer concerned about quality assurance": 1,
+      "cautious_user_concerned_security": 1,
+      "price-sensitive user avoiding financial risk due to return policy": 1,
+      "Frequent past purchaser (2 years history) experiencing trust erosion due to perceived unfair account suspension": 1,
+      "price-sensitive user dissatisfied with refund policy": 1,
+      "User annoyed by perceived scam or poor experience": 1,
+      "distressed user facing slow after-sales service": 1
+    },
+    "styling_doubt": {
+      "budget-conscious users looking for wedding outfit ideas": 1
+    }
+  },
+  "formula": "Opportunity Score = frequency_percent x mean_intensity x addressability_weight (addressability_weight = 1.0 if the majority of that barrier's snippets are addressable_without_money, else 0.3)"
+}
