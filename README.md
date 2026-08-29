@@ -11,6 +11,8 @@ pinned: false
 
 # AJIO Discovery Engine
 
+**Live app:** [https://ajio-discovery-engine.streamlit.app/](https://ajio-discovery-engine.streamlit.app/)
+
 A ranked, scored analysis of purchase barriers extracted from public user feedback about AJIO and
 Myntra (Google Play reviews, YouTube comments) — not a summary or sentiment report.
 
@@ -39,7 +41,7 @@ streamlit run app.py
 ```
 
 Scraping the corpus separately requires `requirements-scraper.txt` and is never run on the
-deployed Space — the corpus is pre-computed and committed under `data/`.
+deployed app — the corpus is pre-computed and committed under `data/`.
 
 ## Environment variables
 
