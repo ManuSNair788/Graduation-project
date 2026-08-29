@@ -1,0 +1,51 @@
+{
+  "presample": {
+    "youtube": {
+      "pre": 2451,
+      "post": 2451
+    },
+    "play_store_ajio": {
+      "pre": 2000,
+      "post": 700
+    },
+    "play_store_myntra": {
+      "pre": 1000,
+      "post": 300
+    },
+    "other": {
+      "pre": 0,
+      "post": 0
+    },
+    "total": {
+      "pre": 5451,
+      "post": 3451
+    }
+  },
+  "quota_estimate": {
+    "expected_calls": 346,
+    "daily_request_limit": 1000,
+    "request_fraction": 0.346,
+    "expected_tokens": 553600,
+    "daily_token_limit": 2000000,
+    "token_fraction": 0.2768,
+    "over_threshold": false
+  },
+  "input_count": 5451,
+  "presampled_count": 3451,
+  "survivor_count": 204,
+  "pre_sample_cap_survivor_count": 204,
+  "by_source": {
+    "play_store": {
+      "survived": 9,
+      "of": 1000,
+      "rate": 0.009
+    },
+    "youtube": {
+      "survived": 195,
+      "of": 2451,
+      "rate": 0.0796
+    }
+  },
+  "halted": false,
+  "halt_reasons": []
+}

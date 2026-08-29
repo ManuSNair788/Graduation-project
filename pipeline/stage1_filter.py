@@ -432,6 +432,13 @@ def run(
         "halt_reasons": halt_reasons,
     }
 
+    # Addition (author): corpus provenance persisted separately (without the potentially large
+    # "dropped" list) so the Streamlit app can show it on the Opportunity tab without re-running
+    # Stage 1 or loading the full raw corpus itself.
+    provenance_path = Path(output_path).parent / "stage1_report.json"
+    with open(provenance_path, "w", encoding="utf-8") as f:
+        json.dump({k: v for k, v in report.items() if k != "dropped"}, f, ensure_ascii=False, indent=2)
+
     if halt_reasons:
         log.error("STOPPING before Stage 2: " + "; ".join(halt_reasons))
     else:

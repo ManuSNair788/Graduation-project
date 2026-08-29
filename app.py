@@ -30,6 +30,7 @@ def load_cached():
         "extractions": _load("extractions.json"),
         "aggregates": _load("aggregates.json"),
         "synthesis": _load("synthesis.json"),
+        "stage1_report": _load("stage1_report.json"),
     }
 
 
@@ -38,13 +39,60 @@ def render_opportunity_table(aggregates: dict, key_prefix: str = "") -> None:
         st.info("No aggregate data available.")
         return
 
+    total_records = aggregates.get("total_records")
+    non_other_total = aggregates.get("non_other_total")
+    other = aggregates.get("other_summary")
+
+    if other and other["count"]:
+        denom_note = (
+            f"Ranked below: **{non_other_total} of {total_records}** classified snippets "
+            f"(the {other['count']} classified as `other` — {other['percent_of_corpus']}% of the "
+            f"corpus — are excluded from ranking and reported below the table)."
+        )
+        st.caption(denom_note)
+
     df = pd.DataFrame(aggregates["barrier_table"]).sort_values("opportunity_score", ascending=False)
     st.dataframe(df, width="stretch", hide_index=True)
     st.bar_chart(df.set_index("barrier")["opportunity_score"], horizontal=True)
     st.caption(
         "**Opportunity Score = frequency_percent x mean_intensity x addressability_weight** "
         "(addressability_weight = 1.0 if the majority of that barrier's snippets are "
-        "addressable_without_money, else 0.3)"
+        "addressable_without_money, else 0.3). frequency_percent for the 8 ranked barriers is "
+        f"computed against **{non_other_total}** (total minus `other`), not the full "
+        f"**{total_records}**."
+    )
+
+    if other and other["count"]:
+        st.warning(
+            f"**`other` — {other['count']} snippets ({other['percent_of_corpus']}% of the "
+            f"{total_records}-snippet corpus) — excluded from the ranking above.**\n\n{other['note']}"
+        )
+
+
+def render_corpus_provenance(stage1_report: dict) -> None:
+    if not stage1_report:
+        st.info("No Stage 1 provenance data available.")
+        return
+
+    collected = stage1_report["input_count"]
+    presampled = stage1_report["presampled_count"]
+    relevant = stage1_report["survivor_count"]
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Collected (raw)", collected)
+    c2.metric("Presampled / filtered", presampled)
+    c3.metric("Relevant (Stage 1 output)", relevant)
+
+    by_source = stage1_report.get("by_source", {})
+    rows = [
+        {"source": source, "survived": v["survived"], "of": v["of"], "rate": f"{v['rate']:.1%}"}
+        for source, v in by_source.items()
+    ]
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+    st.caption(
+        f"{collected} snippets scraped -> presampled down to {presampled} before Stage 1 "
+        f"(weighted by source, see ARCHITECTURE.md §2.3) -> {relevant} survived the relevance "
+        f"filter and went into Stage 2 extraction."
     )
 
 
@@ -124,8 +172,16 @@ with tab1:
                 st.info("None of the pasted reviews were classified as relevant to wishlisting/deferral.")
 
 with tab2:
-    st.subheader("Opportunity table")
+    st.subheader("Corpus provenance")
+    st.write(
+        "Sample size and where it came from — visible up front, since presenting the ranking "
+        "without this context would make it easy to over-read a small, filtered sample."
+    )
     cached = load_cached()
+    render_corpus_provenance(cached["stage1_report"])
+
+    st.divider()
+    st.subheader("Opportunity table")
     render_opportunity_table(cached["aggregates"])
 
 with tab3:

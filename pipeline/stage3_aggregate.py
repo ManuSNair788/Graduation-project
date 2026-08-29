@@ -12,6 +12,13 @@ FORMULA = (
     "addressable_without_money, else 0.3)"
 )
 
+OTHER_NOTE = (
+    "Dominated by low-value \"please share the link\" comments that passed the Stage 1 "
+    "relevance filter (they're about a fashion purchase) but carry no purchase-hesitation "
+    "signal. Not a ranked opportunity area — it's a residual bucket, not something comparable "
+    "or actionable against the 8 named barriers below."
+)
+
 
 def opportunity_score(freq_pct: float, mean_intensity: float, addressable_share: float) -> float:
     weight = 1.0 if addressable_share > 0.5 else 0.3
@@ -20,16 +27,27 @@ def opportunity_score(freq_pct: float, mean_intensity: float, addressable_share:
 
 def aggregate_records(records: list[dict]) -> dict:
     """In-memory core, no file I/O — reusable from Streamlit's live paste-box path
-    (ARCHITECTURE.md §2.1)."""
+    (ARCHITECTURE.md §2.1).
+
+    Correction (author): "other" is a residual bucket, not an opportunity area — ranking it
+    first (it was the largest category) made the output unusable for its stated purpose. It's
+    excluded from the ranked barrier_table and reported separately instead; the 8 named
+    barriers' frequency_percent is recomputed against the non-"other" corpus, with both
+    denominators stated so the numbers are traceable.
+    """
     total = len(records)
     by_barrier = defaultdict(list)
     for r in records:
         by_barrier[r["barrier"]].append(r)
 
+    other_records = by_barrier.pop("other", [])
+    other_count = len(other_records)
+    non_other_total = total - other_count
+
     barrier_table = []
     for barrier, recs in by_barrier.items():
         count = len(recs)
-        freq_pct = (count / total * 100) if total else 0.0
+        freq_pct = (count / non_other_total * 100) if non_other_total else 0.0
         mean_intensity = sum(r["intensity"] for r in recs) / count if count else 0.0
         addressable_share = (
             sum(1 for r in recs if r["addressable_without_money"]) / count if count else 0.0
@@ -47,6 +65,14 @@ def aggregate_records(records: list[dict]) -> dict:
         )
     barrier_table.sort(key=lambda b: b["opportunity_score"], reverse=True)
 
+    other_summary = {
+        "count": other_count,
+        "percent_of_corpus": round((other_count / total * 100) if total else 0.0, 2),
+        "note": OTHER_NOTE,
+    }
+
+    # Cross-cuts intentionally still include "other" — they're breakdowns, not rankings, and
+    # showing the full picture (noise included) there is the honest choice.
     cross_save_intent = defaultdict(lambda: defaultdict(int))
     for r in records:
         cross_save_intent[r["barrier"]][r["save_intent"]] += 1
@@ -58,6 +84,8 @@ def aggregate_records(records: list[dict]) -> dict:
 
     return {
         "total_records": total,
+        "non_other_total": non_other_total,
+        "other_summary": other_summary,
         "barrier_table": barrier_table,
         "barrier_x_save_intent": {b: dict(v) for b, v in cross_save_intent.items()},
         "barrier_x_segment_signal": {b: dict(v) for b, v in cross_segment.items()},
