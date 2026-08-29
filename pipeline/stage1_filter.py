@@ -193,13 +193,24 @@ def _load_checkpoint(checkpoint_path: str, id_lookup: dict) -> tuple[set, list[d
             if not line:
                 continue
             rec = json.loads(line)
-            processed_ids.add(rec["id"])
             if rec["id"] not in id_lookup:
                 continue  # stale entry from a different corpus/presample — safe to ignore
-            if rec.get("relevant"):
-                survivors.append(id_lookup[rec["id"]])
+            if "relevant" in rec:
+                # Only a genuine classification counts as done — skip it on resume.
+                processed_ids.add(rec["id"])
+                if rec["relevant"]:
+                    survivors.append(id_lookup[rec["id"]])
             elif "dropped_reason" in rec:
+                # A drop is a call failure (rate_limited/llm_error/malformed/length_mismatch),
+                # not a content judgment — not marked processed, so it's retried fresh. Matters
+                # concretely today: 5 snippets dropped when GROQ_MODEL_FILTER's token cap hit
+                # would otherwise stay excluded forever, even after switching to a model that
+                # can classify them fine.
                 dropped.append({"id": rec["id"], "reason": rec["dropped_reason"]})
+
+    # A later line may have succeeded on retry where an earlier one was dropped — don't report
+    # the same snippet as both.
+    dropped = [d for d in dropped if d["id"] not in processed_ids]
 
     return processed_ids, survivors, dropped
 
