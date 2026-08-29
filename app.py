@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from collections import Counter
 from pathlib import Path
@@ -7,6 +8,19 @@ import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+# Streamlit Community Cloud (and HF Spaces, depending on config) inject secrets via
+# st.secrets, not the process environment — llm.py only ever reads os.environ (it's a plain
+# module, not Streamlit-aware, and is shared with the CLI pipeline scripts where st.secrets
+# doesn't exist at all). Bridge the two here, before any pipeline module is imported, so a
+# plain os.environ lookup in llm.py still works under either hosting platform. Wrapped in
+# try/except because st.secrets raises if no secrets are configured at all (e.g. local dev
+# relying solely on discovery-engine/.env, which llm.py's own _load_dotenv() already handles).
+try:
+    for _key, _value in st.secrets.items():
+        os.environ.setdefault(_key, str(_value))
+except Exception:
+    pass
 
 from pipeline import stage1_filter, stage2_extract, stage3_aggregate
 
