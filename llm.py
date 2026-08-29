@@ -35,6 +35,13 @@ DAILY_REQUEST_LIMITS = {
 # ARCHITECTURE.md §4.4 point 1 — four retries beyond the original attempt.
 BACKOFF_SCHEDULE_S = [1, 2, 4, 8]
 
+# Bug found in production (Phase 3): a 429's Retry-After header was honored uncapped, and Groq
+# returned one large enough to make a single time.sleep() block for ~2 hours, stalling the
+# whole run silently. Our own RPM/TPM windows already handle legitimate per-minute pacing
+# proactively — a 429 that gets through anyway should only ever need a short wait to clear, so
+# Retry-After is now capped at this ceiling rather than trusted unconditionally.
+MAX_RETRY_AFTER_S = 30
+
 DEFAULT_EXPECTED_OUTPUT_TOKENS = 500
 
 
@@ -149,9 +156,10 @@ def _retry_after_seconds(exc: RateLimitError) -> Optional[int]:
     if value is None:
         return None
     try:
-        return int(float(value))
+        parsed = int(float(value))
     except (TypeError, ValueError):
         return None
+    return min(parsed, MAX_RETRY_AFTER_S)
 
 
 def _call(
