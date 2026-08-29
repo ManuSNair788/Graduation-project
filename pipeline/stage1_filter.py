@@ -1,8 +1,10 @@
 import json
 import logging
 import math
+import os
 import random
 import sys
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -28,22 +30,37 @@ RETRY_BATCH_SIZE = 5
 CORPUS_CAP = 600
 SAMPLE_SEED = 42
 
+CHECKPOINT_PATH = "data/stage1_partial.jsonl"  # author correction, Phase 3, third pass: the
+# real cost of the 2-hour stall was losing all completed work, not the stall itself. One JSON
+# line per classified snippet, appended (and flushed) after every batch/sub-batch, so a crash,
+# stall, or manual kill costs at most one batch, not the whole run.
+
+HEARTBEAT_EVERY_N_BATCHES = 10  # author correction, Phase 3, third pass: makes a stall visible
+# within minutes rather than hours.
+
 # Addition (author, Phase 3): thresholds checked after a full run, before Stage 2 ever spends
 # quota on the survivors. A thin or lopsided corpus needs a look before proceeding.
 MIN_SURVIVORS = 200
 MAX_SOURCE_RATIO = 3.0
 
-# Correction (author, Phase 3, second pass): the 400/200 Play Store presample caps below were a
-# quota-conservation measure that turned out to be the wrong lever. The real Stage 1 run showed
-# 73 survivors across 8-9 barrier categories — too few for credible frequency percentages. The
-# constraint is corpus volume relative to barrier-category count, not per-call cost (Stage 1's
-# actual cost is comfortably inside quota either way — see estimate_quota below). No more
-# downsampling: the full Play Store pool goes in, same as YouTube already does.
+# Correction (author, Phase 3, third pass): Play Store survives at only ~1.8% (measured on the
+# real run), so the full ~3,000-review pool costs roughly 300 calls to yield ~54 survivors —
+# over half the day's call budget for a quarter of the output. Play Store is downsampled again,
+# but to a higher, deliberately-chosen count (not the earlier 400/200 quota-conservation guess) —
+# enough for source diversity without dominating the quota. All YouTube is still kept (8.7%
+# survival — the corpus's main source of on-topic language).
+PRESAMPLE_AJIO_COUNT = 700
+PRESAMPLE_MYNTRA_COUNT = 300
 
 # Addition (author, Phase 3): abort before making any calls if the estimated request volume for
 # this run can't possibly finish within a safe fraction of the daily cap. A run that cannot
 # finish should fail before it starts, not partway through burning quota.
 QUOTA_ABORT_THRESHOLD = 0.6
+
+# Rough pace observed during the one clean stretch of a real run (before the Retry-After bug
+# degraded things) — used only to print an approximate runtime projection, not for any control
+# decision.
+OBSERVED_CALLS_PER_MIN = 9.8
 
 
 def _strip_fences(text: str) -> str:
@@ -58,27 +75,30 @@ def _strip_fences(text: str) -> str:
 
 
 def presample_corpus(snippets: list[dict], seed: int = SAMPLE_SEED) -> tuple[list[dict], dict]:
-    """No downsampling (author correction, Phase 3, second pass) — the full pool goes into
-    Stage 1 for every source. Kept as a function (rather than inlined into run()) because the
-    by-source composition report is still useful, and `seed` is accepted for interface
-    stability with the corpus-cap step in run(), which still samples after Stage 1."""
+    """Weighted presample — see PRESAMPLE_AJIO_COUNT/PRESAMPLE_MYNTRA_COUNT above for why these
+    particular numbers. All YouTube kept; Play Store downsampled."""
+    rng = random.Random(seed)
+
     youtube = [s for s in snippets if s["source"] == "youtube"]
     ajio = [s for s in snippets if s["source"] == "play_store" and s.get("app") == "ajio"]
     myntra = [s for s in snippets if s["source"] == "play_store" and s.get("app") == "myntra"]
     categorized_ids = {s["id"] for s in youtube + ajio + myntra}
     other = [s for s in snippets if s["id"] not in categorized_ids]
 
-    presampled = youtube + ajio + myntra + other  # full pool, every source
+    sampled_ajio = rng.sample(ajio, min(PRESAMPLE_AJIO_COUNT, len(ajio)))
+    sampled_myntra = rng.sample(myntra, min(PRESAMPLE_MYNTRA_COUNT, len(myntra)))
+
+    presampled = youtube + sampled_ajio + sampled_myntra + other
 
     report = {
         "youtube": {"pre": len(youtube), "post": len(youtube)},
-        "play_store_ajio": {"pre": len(ajio), "post": len(ajio)},
-        "play_store_myntra": {"pre": len(myntra), "post": len(myntra)},
+        "play_store_ajio": {"pre": len(ajio), "post": len(sampled_ajio)},
+        "play_store_myntra": {"pre": len(myntra), "post": len(sampled_myntra)},
         "other": {"pre": len(other), "post": len(other)},
         "total": {"pre": len(snippets), "post": len(presampled)},
     }
 
-    log.info("=== Corpus composition (no downsampling — full pool) ===")
+    log.info("=== Presample (before any Stage 1 call) ===")
     for label, counts in report.items():
         log.info(f"  {label}: {counts['pre']} -> {counts['post']}")
 
@@ -131,33 +151,115 @@ def _classify_batch(batch: list[dict]) -> tuple[list[bool] | None, str | None]:
     return parsed.relevant, None
 
 
-def classify_snippets(snippets: list[dict]) -> tuple[list[dict], list[dict]]:
-    """Core batching logic, no file I/O, no corpus cap, no halt check — reusable from both
-    the CLI driver below and Streamlit's live paste-box path (ARCHITECTURE.md §2.1)."""
+def _load_checkpoint(checkpoint_path: str, id_lookup: dict) -> tuple[set, list[dict], list[dict]]:
+    processed_ids: set = set()
     survivors: list[dict] = []
     dropped: list[dict] = []
 
-    for start in range(0, len(snippets), BATCH_SIZE):
-        batch = snippets[start : start + BATCH_SIZE]
-        relevance, failure = _classify_batch(batch)
+    if not os.path.exists(checkpoint_path):
+        return processed_ids, survivors, dropped
 
-        if relevance is not None:
-            survivors.extend(s for s, is_relevant in zip(batch, relevance) if is_relevant)
-            continue
+    with open(checkpoint_path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            rec = json.loads(line)
+            processed_ids.add(rec["id"])
+            if rec["id"] not in id_lookup:
+                continue  # stale entry from a different corpus/presample — safe to ignore
+            if rec.get("relevant"):
+                survivors.append(id_lookup[rec["id"]])
+            elif "dropped_reason" in rec:
+                dropped.append({"id": rec["id"], "reason": rec["dropped_reason"]})
 
-        log.warning(f"Batch of {len(batch)} failed ({failure}), retrying at batch size {RETRY_BATCH_SIZE}")
-        for sub_start in range(0, len(batch), RETRY_BATCH_SIZE):
-            sub_batch = batch[sub_start : sub_start + RETRY_BATCH_SIZE]
-            sub_relevance, sub_failure = _classify_batch(sub_batch)
-            if sub_relevance is not None:
-                survivors.extend(s for s, is_relevant in zip(sub_batch, sub_relevance) if is_relevant)
+    return processed_ids, survivors, dropped
+
+
+def classify_snippets(snippets: list[dict], checkpoint_path: str | None = None) -> tuple[list[dict], list[dict]]:
+    """Core batching logic — reusable from both the CLI driver below and Streamlit's live
+    paste-box path (ARCHITECTURE.md §2.1), which is why checkpointing is opt-in via
+    `checkpoint_path` rather than always-on: the live path processes small ad hoc samples and
+    has no business writing to the corpus-run checkpoint file.
+
+    When `checkpoint_path` is given: loads already-processed snippet IDs from it and skips them
+    (logging the resume position), then appends every new batch/sub-batch's verdicts to it as
+    they complete — so a crash, stall, or manual kill costs at most one batch, not the whole run."""
+    id_lookup = {s["id"]: s for s in snippets}
+    survivors: list[dict] = []
+    dropped: list[dict] = []
+    processed_ids: set = set()
+
+    if checkpoint_path:
+        processed_ids, survivors, dropped = _load_checkpoint(checkpoint_path, id_lookup)
+        if processed_ids:
+            log.info(
+                f"Resuming from checkpoint '{checkpoint_path}': {len(processed_ids)} already "
+                f"processed ({len(survivors)} survivors, {len(dropped)} dropped so far)"
+            )
+
+    remaining = [s for s in snippets if s["id"] not in processed_ids]
+    if processed_ids:
+        log.info(f"{len(remaining)} snippets remaining out of {len(snippets)} total")
+
+    checkpoint_file = None
+    if checkpoint_path:
+        Path(checkpoint_path).parent.mkdir(parents=True, exist_ok=True)
+        checkpoint_file = open(checkpoint_path, "a", encoding="utf-8")
+
+    def _checkpoint_relevant(batch: list[dict], relevance: list[bool]) -> None:
+        if not checkpoint_file:
+            return
+        for s, is_relevant in zip(batch, relevance):
+            checkpoint_file.write(json.dumps({"id": s["id"], "relevant": is_relevant}) + "\n")
+        checkpoint_file.flush()
+
+    def _checkpoint_dropped(batch: list[dict], reason: str) -> None:
+        if not checkpoint_file:
+            return
+        for s in batch:
+            checkpoint_file.write(json.dumps({"id": s["id"], "dropped_reason": reason}) + "\n")
+        checkpoint_file.flush()
+
+    start_time = time.monotonic()
+    total_batches = math.ceil(len(remaining) / BATCH_SIZE) if remaining else 0
+    batch_num = 0
+
+    try:
+        for start in range(0, len(remaining), BATCH_SIZE):
+            batch_num += 1
+            batch = remaining[start : start + BATCH_SIZE]
+            relevance, failure = _classify_batch(batch)
+
+            if relevance is not None:
+                survivors.extend(s for s, is_relevant in zip(batch, relevance) if is_relevant)
+                _checkpoint_relevant(batch, relevance)
             else:
-                for s in sub_batch:
-                    dropped.append({"id": s["id"], "reason": sub_failure})
-                log.error(
-                    f"Sub-batch of {len(sub_batch)} still failed ({sub_failure}), dropping: "
-                    f"{[s['id'] for s in sub_batch]}"
+                log.warning(f"Batch of {len(batch)} failed ({failure}), retrying at batch size {RETRY_BATCH_SIZE}")
+                for sub_start in range(0, len(batch), RETRY_BATCH_SIZE):
+                    sub_batch = batch[sub_start : sub_start + RETRY_BATCH_SIZE]
+                    sub_relevance, sub_failure = _classify_batch(sub_batch)
+                    if sub_relevance is not None:
+                        survivors.extend(s for s, is_relevant in zip(sub_batch, sub_relevance) if is_relevant)
+                        _checkpoint_relevant(sub_batch, sub_relevance)
+                    else:
+                        for s in sub_batch:
+                            dropped.append({"id": s["id"], "reason": sub_failure})
+                        _checkpoint_dropped(sub_batch, sub_failure)
+                        log.error(
+                            f"Sub-batch of {len(sub_batch)} still failed ({sub_failure}), dropping: "
+                            f"{[s['id'] for s in sub_batch]}"
+                        )
+
+            if batch_num % HEARTBEAT_EVERY_N_BATCHES == 0 or batch_num == total_batches:
+                elapsed = time.monotonic() - start_time
+                log.info(
+                    f"Heartbeat: batch {batch_num}/{total_batches}, elapsed {elapsed:.0f}s, "
+                    f"survivors so far {len(survivors)}"
                 )
+    finally:
+        if checkpoint_file:
+            checkpoint_file.close()
 
     return survivors, dropped
 
@@ -165,6 +267,7 @@ def classify_snippets(snippets: list[dict]) -> tuple[list[dict], list[dict]]:
 def run(
     input_path: str = "data/raw_snippets.json",
     output_path: str = "data/filtered_snippets.json",
+    checkpoint_path: str = CHECKPOINT_PATH,
     corpus_cap: int = CORPUS_CAP,
     seed: int = SAMPLE_SEED,
 ) -> dict:
@@ -174,6 +277,19 @@ def run(
     presampled, presample_report = presample_corpus(raw_snippets, seed=seed)
 
     quota_estimate = estimate_quota(len(presampled), BATCH_SIZE, MODEL_ENV_VAR)
+
+    projected_runtime_min = quota_estimate["expected_calls"] / OBSERVED_CALLS_PER_MIN
+    print()
+    print("=== PRE-RUN PROJECTION ===")
+    print(f"Presampled corpus size: {len(presampled)}")
+    print(f"Expected requests: {quota_estimate['expected_calls']}")
+    print(f"Daily cap fraction ({MODEL_ENV_VAR}): {quota_estimate['fraction']:.1%}")
+    print(
+        f"Projected runtime at ~{OBSERVED_CALLS_PER_MIN:.1f} calls/min: "
+        f"{projected_runtime_min:.0f} min ({projected_runtime_min / 60:.1f}h)"
+    )
+    print()
+
     if quota_estimate["over_threshold"]:
         msg = (
             f"ABORTING before any Stage 1 calls: estimated {quota_estimate['expected_calls']} "
@@ -192,7 +308,7 @@ def run(
             "dropped": [],
         }
 
-    survivors, dropped = classify_snippets(presampled)
+    survivors, dropped = classify_snippets(presampled, checkpoint_path=checkpoint_path)
 
     pre_sample_count = len(survivors)
     if pre_sample_count > corpus_cap:
