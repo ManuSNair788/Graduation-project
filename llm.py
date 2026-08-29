@@ -1,9 +1,12 @@
+import logging
 import os
 import time
 from dataclasses import dataclass
 from typing import Optional
 
 from groq import Groq, RateLimitError
+
+log = logging.getLogger("llm")
 
 # ARCHITECTURE.md §4.4 point 2 — confirmed directly from the Groq dashboard, not estimated.
 TPM_LIMITS = {
@@ -30,6 +33,17 @@ DAILY_REQUEST_LIMITS = {
     "GROQ_MODEL_STRONG": 1_000,
     "GROQ_MODEL_SYNTHESIS": 1_000,
     "GROQ_MODEL_FILTER": 1_000,
+}
+
+# Daily TOKEN caps — a second, independent daily ceiling that DAILY_REQUEST_LIMITS alone can't
+# see. Found the hard way: GROQ_MODEL_FILTER (openai/gpt-oss-20b) has a 200,000 tokens/day cap
+# that a real run exhausted (199,720/200,000 used) while comfortably under its request-count
+# budget the whole time. `None` = no daily token cap for that model (per the header table).
+DAILY_TOKEN_LIMITS = {
+    "GROQ_MODEL_CHEAP": None,  # groq/compound-mini — no daily token cap
+    "GROQ_MODEL_STRONG": 2_000_000,  # qwen/qwen3.8-27b
+    "GROQ_MODEL_SYNTHESIS": 200_000,  # openai/gpt-oss-120b
+    "GROQ_MODEL_FILTER": 200_000,  # openai/gpt-oss-20b — confirmed via a real 429 body
 }
 
 # ARCHITECTURE.md §4.4 point 1 — four retries beyond the original attempt.
@@ -76,6 +90,18 @@ _usage_windows: dict[str, list[tuple[float, int]]] = {}
 
 # Per-model rolling one-minute request-count window: {model_env_var: [monotonic_ts, ...]}
 _request_windows: dict[str, list[float]] = {}
+
+# Per-model running total of ACTUAL tokens used this process, from the API's own usage field
+# when available (falls back to the pre-call estimate only if the API didn't return one). This
+# only sees usage from calls made in this process — it has no visibility into usage from an
+# earlier separate run today, which is exactly why the daily-cap error message is still the
+# final authority, not this counter. It exists to make today's usage visible as it accumulates,
+# not to replace the server's own accounting.
+_daily_token_totals: dict[str, int] = {}
+
+
+def get_daily_token_usage(model_env_var: str) -> int:
+    return _daily_token_totals.get(model_env_var, 0)
 
 
 def _client() -> Groq:
@@ -184,10 +210,20 @@ def _call(
             )
             _record_request(model_env_var)
             content = response.choices[0].message.content
-            tokens_used = _extract_token_usage(response) or _estimate_tokens(
-                prompt, expected_output_tokens
-            )
+            actual_tokens = _extract_token_usage(response)
+            tokens_used = actual_tokens or _estimate_tokens(prompt, expected_output_tokens)
             _record_usage(model_env_var, tokens_used)
+            _daily_token_totals[model_env_var] = _daily_token_totals.get(model_env_var, 0) + tokens_used
+            daily_limit = DAILY_TOKEN_LIMITS.get(model_env_var)
+            source = "actual" if actual_tokens is not None else "estimated"
+            running = _daily_token_totals[model_env_var]
+            if daily_limit:
+                log.info(
+                    f"{model_env_var}: {tokens_used} tokens this call ({source}), "
+                    f"{running} used this process ({running / daily_limit:.1%} of {daily_limit}/day cap)"
+                )
+            else:
+                log.info(f"{model_env_var}: {tokens_used} tokens this call ({source}), {running} used this process")
             return LLMResult(ok=True, text=content)
         except RateLimitError as exc:
             # The 429 itself was still a request against the RPM budget, even though it

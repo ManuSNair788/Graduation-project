@@ -18,10 +18,14 @@ from schema import RelevanceBatch
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("stage1")
 
-MODEL_ENV_VAR = "GROQ_MODEL_FILTER"  # openai/gpt-oss-20b — swapped in while compound-mini's
-# daily quota is exhausted (resets midnight UTC / 5:30 AM IST). GROQ_MODEL_CHEAP stays defined
-# in .env/.env.example and llm.call_cheap unremoved, so this is a one-line revert later, not a
-# code change (author instruction).
+MODEL_ENV_VAR = "GROQ_MODEL_STRONG"  # qwen/qwen3.8-27b — swapped in for the SECOND time today.
+# groq/compound-mini hit its 250-requests/day cap first; its temporary replacement,
+# openai/gpt-oss-20b (GROQ_MODEL_FILTER), then hit a 200,000-tokens/day cap
+# (199,720/200,000 used) that DAILY_REQUEST_LIMITS never modeled — it was comfortably under its
+# request-count budget the whole time. qwen has 2,000,000 tokens/day, ten times the headroom,
+# and Stage 1 + Stage 2 combined fit safely inside both its request and token budgets today (see
+# estimate_quota below). GROQ_MODEL_CHEAP and GROQ_MODEL_FILTER both stay defined and their
+# llm.call_* functions unremoved, so either can be restored later with a one-line change here.
 
 BATCH_SIZE = 10  # gpt-oss-20b is 8K TPM (not compound-mini's 70K) — a batch of 30 would exceed
 # that per call. At 10, the existing TPM throttle becomes the binding constraint and paces the
@@ -56,6 +60,12 @@ PRESAMPLE_MYNTRA_COUNT = 300
 # this run can't possibly finish within a safe fraction of the daily cap. A run that cannot
 # finish should fail before it starts, not partway through burning quota.
 QUOTA_ABORT_THRESHOLD = 0.6
+
+# Conservative per-call token estimate for the quota projection below, informed by real
+# openai/gpt-oss-20b usage today: roughly 120-150 successful Stage 1 batch calls (same prompt
+# shape, batch size 10) consumed 199,720 tokens before hitting its daily cap — an observed
+# average in the 1,300-1,700 tokens/call range. Rounded up for safety margin.
+ESTIMATED_TOKENS_PER_CALL = 1600
 
 # Rough pace observed during the one clean stretch of a real run (before the Retry-After bug
 # degraded things) — used only to print an approximate runtime projection, not for any control
@@ -106,18 +116,36 @@ def presample_corpus(snippets: list[dict], seed: int = SAMPLE_SEED) -> tuple[lis
 
 
 def estimate_quota(num_snippets: int, batch_size: int, model_env_var: str) -> dict:
+    """Checks BOTH daily budgets independently — request count and tokens. The request-only
+    version of this function is what missed GROQ_MODEL_FILTER's 200K-tokens/day exhaustion: it
+    was comfortably under its request-count budget the entire time it was failing."""
     expected_calls = math.ceil(num_snippets / batch_size) if num_snippets else 0
-    daily_limit = llm.DAILY_REQUEST_LIMITS[model_env_var]
-    fraction = expected_calls / daily_limit if daily_limit else 1.0
+
+    daily_request_limit = llm.DAILY_REQUEST_LIMITS[model_env_var]
+    request_fraction = expected_calls / daily_request_limit if daily_request_limit else 1.0
+
+    daily_token_limit = llm.DAILY_TOKEN_LIMITS.get(model_env_var)
+    expected_tokens = expected_calls * ESTIMATED_TOKENS_PER_CALL
+    token_fraction = (expected_tokens / daily_token_limit) if daily_token_limit else 0.0
+
     estimate = {
         "expected_calls": expected_calls,
-        "daily_limit": daily_limit,
-        "fraction": round(fraction, 4),
-        "over_threshold": fraction > QUOTA_ABORT_THRESHOLD,
+        "daily_request_limit": daily_request_limit,
+        "request_fraction": round(request_fraction, 4),
+        "expected_tokens": expected_tokens,
+        "daily_token_limit": daily_token_limit,
+        "token_fraction": round(token_fraction, 4) if daily_token_limit else None,
+        "over_threshold": request_fraction > QUOTA_ABORT_THRESHOLD or token_fraction > QUOTA_ABORT_THRESHOLD,
     }
+
     log.info(
-        f"Quota estimate ({model_env_var}): {expected_calls} expected requests / "
-        f"{daily_limit} daily cap = {fraction:.1%}"
+        f"Quota estimate ({model_env_var}): {expected_calls} requests / {daily_request_limit}/day "
+        f"= {request_fraction:.1%}"
+        + (
+            f"; ~{expected_tokens} tokens / {daily_token_limit}/day = {token_fraction:.1%}"
+            if daily_token_limit
+            else " (no daily token cap)"
+        )
     )
     return estimate
 
@@ -139,7 +167,7 @@ def _build_prompt(batch: list[dict]) -> str:
 def _classify_batch(batch: list[dict]) -> tuple[list[bool] | None, str | None]:
     """Returns (relevance_flags, None) on success, or (None, failure_reason)."""
     prompt = _build_prompt(batch)
-    result = llm.call_filter(prompt, expected_output_tokens=len(batch) * 6)
+    result = llm.call_strong(prompt, expected_output_tokens=len(batch) * 6)
     if not result.ok:
         return None, "rate_limited" if result.rate_limited else "llm_error"
     try:
@@ -283,7 +311,14 @@ def run(
     print("=== PRE-RUN PROJECTION ===")
     print(f"Presampled corpus size: {len(presampled)}")
     print(f"Expected requests: {quota_estimate['expected_calls']}")
-    print(f"Daily cap fraction ({MODEL_ENV_VAR}): {quota_estimate['fraction']:.1%}")
+    print(f"Request budget fraction ({MODEL_ENV_VAR}): {quota_estimate['request_fraction']:.1%}")
+    if quota_estimate["daily_token_limit"]:
+        print(
+            f"Expected tokens: ~{quota_estimate['expected_tokens']} / "
+            f"{quota_estimate['daily_token_limit']}/day = {quota_estimate['token_fraction']:.1%}"
+        )
+    else:
+        print("No daily token cap for this model.")
     print(
         f"Projected runtime at ~{OBSERVED_CALLS_PER_MIN:.1f} calls/min: "
         f"{projected_runtime_min:.0f} min ({projected_runtime_min / 60:.1f}h)"
@@ -291,10 +326,17 @@ def run(
     print()
 
     if quota_estimate["over_threshold"]:
+        token_clause = (
+            f" or ~{quota_estimate['expected_tokens']} tokens "
+            f"({quota_estimate['token_fraction']:.1%} of its token cap)"
+            if quota_estimate["daily_token_limit"]
+            else ""
+        )
         msg = (
             f"ABORTING before any Stage 1 calls: estimated {quota_estimate['expected_calls']} "
-            f"requests is {quota_estimate['fraction']:.1%} of {MODEL_ENV_VAR}'s "
-            f"{quota_estimate['daily_limit']}/day cap, over the {QUOTA_ABORT_THRESHOLD:.0%} threshold."
+            f"requests ({quota_estimate['request_fraction']:.1%} of {MODEL_ENV_VAR}'s "
+            f"{quota_estimate['daily_request_limit']}/day request cap){token_clause} exceeds the "
+            f"{QUOTA_ABORT_THRESHOLD:.0%} threshold."
         )
         log.error(msg)
         return {
