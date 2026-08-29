@@ -18,10 +18,9 @@ def opportunity_score(freq_pct: float, mean_intensity: float, addressable_share:
     return freq_pct * mean_intensity * weight
 
 
-def run(input_path: str = "data/extractions.json", output_path: str = "data/aggregates.json") -> dict:
-    with open(input_path, encoding="utf-8") as f:
-        records = json.load(f)
-
+def aggregate_records(records: list[dict]) -> dict:
+    """In-memory core, no file I/O — reusable from Streamlit's live paste-box path
+    (ARCHITECTURE.md §2.1)."""
     total = len(records)
     by_barrier = defaultdict(list)
     for r in records:
@@ -57,7 +56,7 @@ def run(input_path: str = "data/extractions.json", output_path: str = "data/aggr
         seg = r.get("segment_signal") or "unspecified"
         cross_segment[r["barrier"]][seg] += 1
 
-    aggregates = {
+    return {
         "total_records": total,
         "barrier_table": barrier_table,
         "barrier_x_save_intent": {b: dict(v) for b, v in cross_save_intent.items()},
@@ -65,11 +64,21 @@ def run(input_path: str = "data/extractions.json", output_path: str = "data/aggr
         "formula": FORMULA,
     }
 
+
+def run(input_path: str = "data/extractions.json", output_path: str = "data/aggregates.json") -> dict:
+    with open(input_path, encoding="utf-8") as f:
+        records = json.load(f)
+
+    aggregates = aggregate_records(records)
+
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(aggregates, f, ensure_ascii=False, indent=2)
 
-    log.info(f"Stage3: aggregated {total} records into {len(barrier_table)} barrier categories")
+    log.info(
+        f"Stage3: aggregated {aggregates['total_records']} records into "
+        f"{len(aggregates['barrier_table'])} barrier categories"
+    )
 
     return aggregates
 

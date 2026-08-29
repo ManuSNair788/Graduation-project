@@ -104,6 +104,20 @@ def _process_snippet(snippet: dict) -> tuple[dict | None, str | None]:
         return None, "malformed"
 
 
+def extract_snippets(snippets: list[dict]) -> tuple[list[dict], list[dict]]:
+    """In-memory core, no file I/O, no quota estimate — reusable from Streamlit's live
+    paste-box path (ARCHITECTURE.md §2.1), which processes a small ad hoc sample directly."""
+    records: list[dict] = []
+    dropped: list[dict] = []
+    for snippet in snippets:
+        record, reason = _process_snippet(snippet)
+        if record is not None:
+            records.append(record)
+        else:
+            dropped.append({"id": snippet["id"], "reason": reason})
+    return records, dropped
+
+
 def run(
     input_path: str = "data/filtered_snippets.json",
     output_path: str | None = "data/extractions.json",
