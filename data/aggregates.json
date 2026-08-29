@@ -75,22 +75,11 @@
       "purchase_intent": 2,
       "bookmarking": 1
     },
-    "other": {
-      "unclear": 59,
-      "purchase_intent": 32,
-      "comparison": 8,
-      "aspiration": 9,
-      "bookmarking": 6
-    },
     "fit_size": {
       "unclear": 14,
       "comparison": 1,
       "purchase_intent": 6,
       "aspiration": 1
-    },
-    "occasion_fit": {
-      "purchase_intent": 1,
-      "unclear": 1
     },
     "stock_size_unavailable": {
       "aspiration": 2,
@@ -103,16 +92,10 @@
       "purchase_intent": 2,
       "comparison": 10
     },
-    "choice_overload": {
-      "bookmarking": 1
-    },
     "trust_returns": {
       "unclear": 16,
       "comparison": 1,
       "purchase_intent": 2
-    },
-    "styling_doubt": {
-      "aspiration": 1
     }
   },
   "barrier_x_segment_signal": {
@@ -129,78 +112,6 @@
       "price-sensitive but quality-conscious customer": 1,
       "social validation seeker": 1,
       "Price-sensitive Gap brand buyer": 1
-    },
-    "other": {
-      "unspecified": 43,
-      "social sharer": 1,
-      "Telugu-speaking female user seeking specific product": 1,
-      "South Indian female (Telugu speaker)": 1,
-      "new_user_or_unfamiliar_with_promo_mechanics": 1,
-      "immediate purchase seeker for specific item": 1,
-      "User requesting specific product link": 1,
-      "external_sharer": 1,
-      "user seeking specific product link from content/video": 1,
-      "joyful_consumer": 1,
-      "loyal_brand_fan": 1,
-      "users who appreciate visual and audio presentation": 1,
-      "aesthetics-driven": 1,
-      "Wedding shopper seeking affordable options": 1,
-      "Brand loyal followers seeking specific niche collections": 1,
-      "Long-time customer experiencing content fatigue and seeking inclusive sizing/curation for older demographics": 1,
-      "null": 3,
-      "broadly satisfied user": 1,
-      "Visuator with positive aesthetic appreciation": 1,
-      "active shopper with immediate interest": 1,
-      "User seeking specific product link": 1,
-      "Fashion-forward female seeking external product discovery": 1,
-      "Influencer/Content Consumer seeking specific item": 1,
-      "Aesthetic-driven buyer valuing visual appeal": 1,
-      "Aesthetic enthusiast with high confidence in designer taste": 1,
-      "enthusiastic buyer": 1,
-      "Satisfied visual aesthetic seeker": 1,
-      "User specifically seeking white variant": 1,
-      "informed customer seeking specific product reference": 1,
-      "casual_user": 1,
-      "satisfied customer": 1,
-      "unengaged user": 1,
-      "Cash on Delivery dependent user": 1,
-      "User seeing item in feed or social context lacking product metadata": 1,
-      "User viewing community-shared content": 1,
-      "Price-sensitive buyer seeking affordable ethnic wear": 1,
-      "User seeking price information for a specific product": 1,
-      "satisfied repeat buyer": 1,
-      "budget-conscious": 1,
-      "Gift buyer for sister's birthday": 1,
-      "Price-sensitive user comparing Myntra with Meesho": 1,
-      "aesthetic-sensitive shopper": 1,
-      "satisfied_with_quality": 1,
-      "Value-conscious user assessing brand aesthetic worth of investment": 1,
-      "User comparing brand aesthetics (colors/vibes) between Myntra and Meesho": 1,
-      "Value-conscious user preferring Meesho": 1,
-      "Price-sensitive peer retailer switcher": 1,
-      "Collectors of small furniture and plush digits": 1,
-      "price‑sensitive office workers": 1,
-      "Customer who buys from Temu and finds the quality acceptable": 1,
-      "Loyal competitor user (Temu) satisfied with price and product": 1,
-      "social validation seeker": 1,
-      "Loyal to existing platforms, hostile to Temu brand": 1,
-      "interested customer seeking more inventory": 1,
-      "user asking about product source or availability": 1,
-      "First-time buyers or users unfamiliar with specific product configurations": 1,
-      "Needs styling guidance/tutorials": 1,
-      "price-sensitive first-time customer": 1,
-      "long-term habit user": 1,
-      "long-term loyal user (7 years)": 1,
-      "long-term user (6-7 years)": 1,
-      "long-term indecisive user (4 years)": 1,
-      "skeptical user aware of return/price tricks": 1,
-      "long-term user": 1,
-      "Satisfied user pleased with features, collection, and material": 1,
-      "positive sentiment responder": 1,
-      "heavy wishlist users": 1,
-      "satisfied user with positive sentiment toward variety": 1,
-      "trend‑seeking fashion enthusiasts": 1,
-      "satisfaction-focused apparel buyer": 1
     },
     "fit_size": {
       "User seeking basic size specification information": 1,
@@ -224,10 +135,6 @@
       "DIY-savvy customer who accepts minor fit imperfections if quality is good": 1,
       "User interested in bodycon dresses": 1,
       "users sensitive to body diversity and inclusivity": 1
-    },
-    "occasion_fit": {
-      "Wedding shopper seeking ready-to-wear sarees": 1,
-      "user concerned about age-appropriateness or social norms": 1
     },
     "stock_size_unavailable": {
       "Users seeking specific brand hauls (Biba) but unable to fulfill current demand": 1,
@@ -264,9 +171,6 @@
       "parent of infant": 1,
       "post-purchase customer concerned about product integrity during service": 1
     },
-    "choice_overload": {
-      "user seeking specific item retrieval": 1
-    },
     "trust_returns": {
       "unspecified": 6,
       "Multi-platform shopper": 1,
@@ -282,10 +186,13 @@
       "price-sensitive user dissatisfied with refund policy": 1,
       "User annoyed by perceived scam or poor experience": 1,
       "distressed user facing slow after-sales service": 1
-    },
-    "styling_doubt": {
-      "budget-conscious users looking for wedding outfit ideas": 1
     }
+  },
+  "barrier_x_journey_saved_revisit": {
+    "stock_size_unavailable": 1,
+    "trust_returns": 3,
+    "quality_doubt": 3,
+    "price_uncertainty": 1
   },
   "formula": "Opportunity Score = frequency_percent x mean_intensity x addressability_weight (addressability_weight = 1.0 if the majority of that barrier's snippets are addressable_without_money, else 0.3)"
 }

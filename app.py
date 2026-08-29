@@ -245,8 +245,8 @@ with tab4:
     classifiable_counts = Counter(
         r["save_intent"] for r in extractions if r["save_intent"] != "unclear"
     )
-    journey_saved_revisit = [r for r in extractions if r["journey_stage"] in ("saved", "revisit")]
-    journey_barrier_counts = Counter(r["barrier"] for r in journey_saved_revisit)
+    journey_barrier_counts = aggregates.get("barrier_x_journey_saved_revisit", {})
+    journey_saved_revisit_count = sum(journey_barrier_counts.values())
     info_sought = [r["info_sought_outside_app"] for r in extractions if r.get("info_sought_outside_app")]
     workarounds = [r["workaround"] for r in extractions if r.get("workaround")]
 
@@ -280,9 +280,10 @@ with tab4:
 
     st.markdown("**3. What uncertainties remain after users identify a product they like?**")
     st.write(
-        f"Restricting to snippets where `journey_stage` is saved or revisit "
-        f"(**{len(journey_saved_revisit)}** snippets) surfaces which barriers persist after the "
-        f"product is already chosen:"
+        f"Restricting to the ranked barriers where `journey_stage` is saved or revisit "
+        f"(**{journey_saved_revisit_count}** snippets) surfaces which barriers persist after the "
+        f"product is already chosen — `other` and the below-threshold barriers (Tab 2) are "
+        f"excluded here too:"
     )
     st.dataframe(
         pd.DataFrame(

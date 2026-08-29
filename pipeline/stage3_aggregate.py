@@ -102,16 +102,28 @@ def aggregate_records(records: list[dict]) -> dict:
         "note": INSUFFICIENT_EVIDENCE_NOTE,
     }
 
-    # Cross-cuts intentionally still include "other" — they're breakdowns, not rankings, and
-    # showing the full picture (noise included) there is the honest choice.
+    # Correction (author): cross-cuts previously still included "other" and the below-threshold
+    # barriers ("breakdowns, not rankings" was the original reasoning) — but that meant Tab 4
+    # questions built from these cross-cuts (journey-stage, save_intent, segment) kept surfacing
+    # exactly the categories the ranked table exists to exclude, undermining the exclusion instead
+    # of being consistent with it. Every consumer must inherit the same exclusion, so cross-cuts
+    # are now built only from ranked_records — the same ranked barriers as barrier_table.
+    ranked_barrier_names = {b["barrier"] for b in barrier_table}
+    ranked_records = [r for r in records if r["barrier"] in ranked_barrier_names]
+
     cross_save_intent = defaultdict(lambda: defaultdict(int))
-    for r in records:
+    for r in ranked_records:
         cross_save_intent[r["barrier"]][r["save_intent"]] += 1
 
     cross_segment = defaultdict(lambda: defaultdict(int))
-    for r in records:
+    for r in ranked_records:
         seg = r.get("segment_signal") or "unspecified"
         cross_segment[r["barrier"]][seg] += 1
+
+    cross_journey_saved_revisit = defaultdict(int)
+    for r in ranked_records:
+        if r["journey_stage"] in ("saved", "revisit"):
+            cross_journey_saved_revisit[r["barrier"]] += 1
 
     return {
         "total_records": total,
@@ -122,6 +134,7 @@ def aggregate_records(records: list[dict]) -> dict:
         "barrier_table": barrier_table,
         "barrier_x_save_intent": {b: dict(v) for b, v in cross_save_intent.items()},
         "barrier_x_segment_signal": {b: dict(v) for b, v in cross_segment.items()},
+        "barrier_x_journey_saved_revisit": dict(cross_journey_saved_revisit),
         "formula": FORMULA,
     }
 
