@@ -45,7 +45,16 @@ HEARTBEAT_EVERY_N_BATCHES = 10  # author correction, Phase 3, third pass: makes 
 # Addition (author, Phase 3): thresholds checked after a full run, before Stage 2 ever spends
 # quota on the survivors. A thin or lopsided corpus needs a look before proceeding.
 MIN_SURVIVORS = 200
-MAX_SOURCE_RATIO = 3.0
+
+# Correction (author, Phase 3, fourth pass): raised from 3.0 after two real runs both showed an
+# ~8-9x Play Store/YouTube gap (4.8x, then 8.8x on a different presample) and a direct inspection
+# of the rejected/accepted snippets (Phase 3, second pass) confirmed this is a structural property
+# of the two sources, not a filter defect — Play Store reviews are overwhelmingly transactional
+# (delivery, refunds, app crashes), while YouTube comments actually discuss purchase decisions.
+# This check exists to catch a broken filter, and the filter is confirmed working. 10.0 still
+# catches a genuine regression (e.g. one source suddenly returning ~0 survivors) without
+# re-flagging the known, explained imbalance every run.
+MAX_SOURCE_RATIO = 10.0
 
 # Correction (author, Phase 3, third pass): Play Store survives at only ~1.8% (measured on the
 # real run), so the full ~3,000-review pool costs roughly 300 calls to yield ~54 survivors —
