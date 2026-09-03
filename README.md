@@ -11,7 +11,7 @@ pinned: false
 
 # AJIO Discovery Engine
 
-**Live app:** [https://ajio-discovery-engine.streamlit.app/](https://ajio-discovery-engine.streamlit.app/)
+**Live app:** [https://ajio-discovery-engine.onrender.com/](https://ajio-discovery-engine.onrender.com/)
 
 A ranked, scored analysis of purchase barriers extracted from public user feedback about AJIO and
 Myntra (Google Play reviews, YouTube comments) — not a summary or sentiment report.
